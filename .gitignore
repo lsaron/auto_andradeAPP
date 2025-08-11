@@ -1,0 +1,19 @@
+# Node / Next.js
+node_modules/
+.next/
+dist/
+out/
+coverage/
+
+# Logs
+npm-debug.log*
+yarn-*.log*
+pnpm-debug.log*
+
+# Entornos
+.env
+.env.*.local
+
+# SO/IDE
+.DS_Store
+.vscode/
