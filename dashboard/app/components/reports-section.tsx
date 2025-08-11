@@ -141,9 +141,9 @@ export function ReportsSection() {
   const previousReport = monthlyReports[1] // Diciembre 2023
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("es-MX", {
+    return new Intl.NumberFormat("es-CR", {
       style: "currency",
-      currency: "MXN",
+      currency: "CRC",
     }).format(amount)
   }
 

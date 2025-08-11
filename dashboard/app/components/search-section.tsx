@@ -285,9 +285,9 @@ export function SearchSection() {
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("es-MX", {
+    return new Intl.NumberFormat("es-CR", {
       style: "currency",
-      currency: "MXN",
+      currency: "CRC",
     }).format(amount)
   }
 

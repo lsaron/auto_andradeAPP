@@ -3,7 +3,9 @@ from sqlalchemy.orm import Session
 from app.models.database import get_db
 from app.models.clientes import Cliente
 from app.models.carros import Carro
+from app.models.trabajos import Trabajo
 from app.schemas.clientes import ClienteSchema
+from sqlalchemy import func
 
 router = APIRouter()
 
@@ -11,15 +13,28 @@ router = APIRouter()
 @router.get("/clientes/")
 def obtener_clientes(db: Session = Depends(get_db)):
     clientes = db.query(Cliente).all()
-    return [
-        {
+    resultado = []
+    
+    for cliente in clientes:
+        # Obtener todos los carros del cliente
+        carros = db.query(Carro).filter(Carro.id_cliente_actual == cliente.id_nacional).all()
+        
+        # Calcular el total gastado sumando todos los trabajos de los carros del cliente
+        total_gastado = 0
+        for carro in carros:
+            trabajos = db.query(Trabajo).filter(Trabajo.matricula_carro == carro.matricula).all()
+            for trabajo in trabajos:
+                total_gastado += trabajo.costo if trabajo.costo else 0
+        
+        resultado.append({
             "id_nacional": cliente.id_nacional,
             "nombre": cliente.nombre,
             "correo": cliente.correo,
-            "telefono": cliente.telefono
-        }
-        for cliente in clientes
-    ]
+            "telefono": cliente.telefono,
+            "total_gastado": total_gastado
+        })
+    
+    return resultado
 
 # Obtener un cliente con sus carros
 @router.get("/clientes/{id_nacional}")

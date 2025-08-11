@@ -17,34 +17,39 @@ router = APIRouter(prefix="/trabajos", tags=["Trabajos"])
 @router.get("/")
 def obtener_todos_los_trabajos(db: Session = Depends(get_db)):
     trabajos = db.query(Trabajo).all()
-    
     resultado = []
+
     for trabajo in trabajos:
-        # Obtener información del carro
         carro = db.query(Carro).filter(Carro.matricula == trabajo.matricula_carro).first()
-        
-        # Obtener información del cliente
+
         cliente = None
         if carro:
             cliente = db.query(Cliente).filter(Cliente.id_nacional == carro.id_cliente_actual).first()
-        
-        # Obtener gastos del trabajo
+
+        # Gastos como Decimal
         gastos = db.query(DetalleGasto).filter(DetalleGasto.id_trabajo == trabajo.id).all()
-        total_gastos = sum(gasto.monto for gasto in gastos)
-        
+        total_gastos = sum(
+            (g.monto if isinstance(g.monto, Decimal) else Decimal(str(g.monto)))
+            for g in gastos
+        )
+
+        # Costo como Decimal
+        costo = trabajo.costo if isinstance(trabajo.costo, Decimal) else Decimal(str(trabajo.costo))
+        ganancia = costo - total_gastos
+
         resultado.append({
             "id": trabajo.id,
             "matricula_carro": trabajo.matricula_carro,
             "descripcion": trabajo.descripcion,
             "fecha": trabajo.fecha.strftime("%Y-%m-%d"),
-            "costo": trabajo.costo,
+            "costo": float(costo),
             "aplica_iva": trabajo.aplica_iva,
             "cliente_nombre": cliente.nombre if cliente else "Sin cliente",
             "cliente_id": cliente.id_nacional if cliente else None,
-            "total_gastos": total_gastos,
-            "ganancia": trabajo.costo - total_gastos
+            "total_gastos": float(total_gastos),
+            "ganancia": float(ganancia),
         })
-    
+
     return resultado
 
 

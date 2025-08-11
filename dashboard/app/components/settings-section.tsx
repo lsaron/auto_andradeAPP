@@ -26,7 +26,7 @@ export function SettingsSection() {
       autoBackup: true,
       darkMode: false,
       language: "es",
-      currency: "MXN",
+              currency: "CRC",
     },
   })
 
@@ -238,7 +238,7 @@ export function SettingsSection() {
                   value={settings.system.currency}
                   onChange={(e) => updateSystem("currency", e.target.value)}
                 >
-                  <option value="MXN">Colones (CRC)</option>
+                  <option value="CRC">Colones (CRC)</option>
                 </select>
               </div>
             </div>

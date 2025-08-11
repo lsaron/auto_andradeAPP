@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { ErrorMessage } from "@/components/ui/error-message"
 import { Edit, Eye, Plus, Trash2, Search, X, Calendar, Car, DollarSign, FileText, Printer } from "lucide-react"
+import Select from "react-select"
 
 interface WorkOrder {
   id: string
@@ -30,6 +31,11 @@ interface Expense {
   id: string
   item: string
   amount: string
+}
+
+type VehicleOption = {
+  value: string
+  label: string
 }
 
 export function WorkOrdersSection() {
@@ -251,6 +257,12 @@ export function WorkOrdersSection() {
 
   const [availableCars, setAvailableCars] = useState<Array<{id: string, licensePlate: string, owner: string}>>([])
   const [availableClients, setAvailableClients] = useState<Array<{id: string, name: string}>>([])
+  
+  // Transform available cars to options for react-select
+  const vehicleOptions: VehicleOption[] = availableCars.map((car) => ({
+    value: car.licensePlate,
+    label: `${car.licensePlate} - ${car.owner}`,
+  }))
 
   // Load available cars and clients
   const loadAvailableData = async () => {
@@ -552,26 +564,29 @@ export function WorkOrdersSection() {
                 <Label htmlFor="licensePlate" className="text-sm font-medium">
                   Vehículo *
                 </Label>
-                <select
+                <Select<VehicleOption>
                   id="licensePlate"
-                  value={newOrder.licensePlate}
-                  onChange={(e) => {
-                    const selectedCar = availableCars.find((car) => car.licensePlate === e.target.value)
+                  options={vehicleOptions}
+                  value={vehicleOptions.find((option) => option.value === newOrder.licensePlate) || null}
+                  onChange={(selected) => {
+                    const selectedCar = availableCars.find((car) => car.licensePlate === selected?.value)
                     setNewOrder({
                       ...newOrder,
-                      licensePlate: e.target.value,
+                      licensePlate: selected?.value || "",
                       clientName: selectedCar?.owner || "",
                     })
                   }}
-                  className="w-full p-3 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Seleccionar vehículo...</option>
-                  {availableCars.map((car) => (
-                    <option key={car.id} value={car.licensePlate}>
-                      {car.licensePlate} - {car.owner}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Buscar vehículo por placa o cliente..."
+                  isClearable
+                  className="w-full"
+                  styles={{
+                    control: (base) => ({
+                      ...base,
+                      minHeight: "42px",
+                      fontSize: "14px",
+                    }),
+                  }}
+                />
               </div>
 
               {/* Client Name */}

@@ -23,6 +23,7 @@ interface Client {
 }
 
 interface ClientCreate {
+  id_nacional: string
   name: string
   email: string
   phone: string
@@ -50,12 +51,15 @@ export function ClientsSection() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [validationError, setValidationError] = useState<string>("")
   const [newClient, setNewClient] = useState<ClientCreate>({
+    id_nacional: "",
     name: "",
     email: "",
     phone: "",
   })
   const [editClient, setEditClient] = useState<ClientCreate>({
+    id_nacional: "",
     name: "",
     email: "",
     phone: "",
@@ -98,7 +102,7 @@ export function ClientsSection() {
         email: cliente.correo || "",
         phone: cliente.telefono || "",
         registration_date: new Date().toISOString().split("T")[0], // Default for now
-        total_spent: 0, // TODO: Calculate from work orders
+        total_spent: cliente.total_gastado || 0, // Use total_gastado from backend
         vehicle_count: 0, // Will be updated when loading vehicles
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -176,48 +180,69 @@ export function ClientsSection() {
   }, [clients, debouncedSearchTerm])
 
   const handleAddClient = useCallback(async () => {
-    if (newClient.name && newClient.email && newClient.phone) {
-      setIsLoading(true)
+    // Clear previous validation errors
+    setValidationError("")
+    
+    // Validate required fields
+    if (!newClient.id_nacional) {
+      setValidationError("El ID Nacional es obligatorio")
+      return
+    }
+    if (!newClient.name) {
+      setValidationError("El nombre es obligatorio")
+      return
+    }
+    if (!newClient.email) {
+      setValidationError("El email es obligatorio")
+      return
+    }
+    if (!newClient.phone) {
+      setValidationError("El teléfono es obligatorio")
+      return
+    }
+    
+    setIsLoading(true)
 
-      try {
-        const response = await fetch("http://localhost:8000/api/clientes/", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            id_nacional: `CLI-${Date.now()}`, // Generate unique ID
-            nombre: newClient.name,
-            correo: newClient.email,
-            telefono: newClient.phone,
-          }),
-        })
+    try {
+      const response = await fetch("http://localhost:8000/api/clientes/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id_nacional: newClient.id_nacional,
+          nombre: newClient.name,
+          correo: newClient.email,
+          telefono: newClient.phone,
+        }),
+      })
 
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.detail || "Error al registrar cliente")
-        }
-
-        // Reload clients after adding
-        await loadClients()
-
-        setNewClient({
-          name: "",
-          email: "",
-          phone: "",
-        })
-        setIsNewClientModalOpen(false)
-      } catch (error: any) {
-        console.error("Error al registrar cliente:", error)
-        alert(error.message || "Error inesperado")
-      } finally {
-        setIsLoading(false)
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || "Error al registrar cliente")
       }
+
+      // Reload clients after adding
+      await loadClients()
+
+      setNewClient({
+        id_nacional: "",
+        name: "",
+        email: "",
+        phone: "",
+      })
+      setValidationError("")
+      setIsNewClientModalOpen(false)
+    } catch (error: any) {
+      console.error("Error al registrar cliente:", error)
+      alert(error.message || "Error inesperado")
+    } finally {
+      setIsLoading(false)
     }
   }, [newClient])
 
   const handleEditClient = useCallback(async () => {
-    if (selectedClient && editClient.name && editClient.email && editClient.phone) {
+    if (selectedClient && editClient.id_nacional && editClient.name && editClient.email && editClient.phone) {
       setIsLoading(true)
 
       try {
@@ -243,6 +268,7 @@ export function ClientsSection() {
         await loadClients()
 
         setEditClient({
+          id_nacional: "",
           name: "",
           email: "",
           phone: "",
@@ -294,6 +320,7 @@ export function ClientsSection() {
   const handleEditClientClick = useCallback((client: Client) => {
     setSelectedClient(client)
     setEditClient({
+      id_nacional: client.id,
       name: client.name,
       email: client.email,
       phone: client.phone,
@@ -311,9 +338,9 @@ export function ClientsSection() {
   }, [])
 
   const formatCurrency = useCallback((amount: number) => {
-    return new Intl.NumberFormat("es-MX", {
+    return new Intl.NumberFormat("es-CR", {
       style: "currency",
-      currency: "MXN",
+      currency: "CRC",
     }).format(amount)
   }, [])
 
@@ -345,6 +372,18 @@ export function ClientsSection() {
               <DialogTitle>Registrar Nuevo Cliente</DialogTitle>
             </DialogHeader>
             <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="id_nacional" className="text-right">
+                  ID Nacional *
+                </Label>
+                <Input
+                  id="id_nacional"
+                  value={newClient.id_nacional}
+                  onChange={(e) => setNewClient({ ...newClient, id_nacional: e.target.value })}
+                  className="col-span-3"
+                  placeholder="123456789"
+                />
+              </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="name" className="text-right">
                   Nombre
@@ -382,9 +421,19 @@ export function ClientsSection() {
                   placeholder="+52 555 123 4567"
                 />
               </div>
+              
+              {/* Validation Error Message */}
+              {validationError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-sm text-red-800">{validationError}</p>
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsNewClientModalOpen(false)}>
+              <Button variant="outline" onClick={() => {
+                setIsNewClientModalOpen(false)
+                setValidationError("")
+              }}>
                 Cancelar
               </Button>
               <Button onClick={handleAddClient} className="bg-blue-600 hover:bg-blue-700" disabled={isLoading}>
@@ -631,6 +680,19 @@ export function ClientsSection() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-id_nacional" className="text-right">
+                ID Nacional *
+              </Label>
+              <Input
+                id="edit-id_nacional"
+                value={editClient.id_nacional}
+                onChange={(e) => setEditClient({ ...editClient, id_nacional: e.target.value })}
+                className="col-span-3"
+                placeholder="123456789"
+                disabled
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-name" className="text-right">
                 Nombre
               </Label>
@@ -695,6 +757,9 @@ export function ClientsSection() {
                   <strong>¡Advertencia!</strong> Esta acción no se puede deshacer.
                 </p>
                 <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="font-medium">ID Nacional:</span> {clientToDelete.id}
+                  </div>
                   <div>
                     <span className="font-medium">Cliente:</span> {clientToDelete.name}
                   </div>
