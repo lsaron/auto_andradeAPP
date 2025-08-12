@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { ErrorMessage } from "@/components/ui/error-message"
-import { Edit, Eye, Plus, Trash2, Search, X, Calendar, Car, DollarSign, FileText, Printer } from "lucide-react"
+import { Edit, Eye, Plus, Trash2, Search, X, Calendar, Car, FileText, Printer, Coins } from "lucide-react"
 import Select from "react-select"
 
 interface WorkOrder {
@@ -25,6 +25,7 @@ interface WorkOrder {
   clientId: string
   carId: string
   mechanicName?: string
+  expenseDetails?: Expense[] // Agregar gastos detallados
 }
 
 interface Expense {
@@ -466,28 +467,99 @@ export function WorkOrdersSection() {
     }
   }
 
-  const handleViewWorkOrder = (order: WorkOrder) => {
-    setSelectedWorkOrder(order)
+  const handleViewWorkOrder = async (order: WorkOrder) => {
+    try {
+      // Extraer el ID numérico del trabajo (e.g., "WO-010" -> 10)
+      const workOrderId = parseInt(order.id.replace("WO-", ""))
+      
+      // Obtener los gastos detallados del backend
+      const response = await fetch(`http://localhost:8000/api/trabajos/trabajo/${workOrderId}/gastos`)
+      
+      if (response.ok) {
+        const expenseDetails = await response.json()
+        console.log("🔍 Gastos obtenidos del backend:", expenseDetails)
+        
+        // Mapear los datos del backend al formato esperado por el frontend
+        const mappedExpenses = expenseDetails.map((expense: any) => ({
+          id: expense.id,
+          item: expense.descripcion,
+          amount: expense.monto.toString()
+        }))
+        
+        console.log("🔍 Gastos mapeados:", mappedExpenses)
+        
+        // Actualizar la orden con los gastos detallados
+        const orderWithExpenses = {
+          ...order,
+          expenseDetails: mappedExpenses
+        }
+        
+        console.log("🔍 Orden con gastos:", orderWithExpenses)
+        console.log("🔍 expenseDetails:", orderWithExpenses.expenseDetails)
+        
+        setSelectedWorkOrder(orderWithExpenses)
+      } else {
+        // Si no se pueden obtener los gastos, usar la orden sin gastos detallados
+        console.warn("No se pudieron obtener los gastos detallados")
+        setSelectedWorkOrder(order)
+      }
+    } catch (error) {
+      console.error("Error al obtener gastos detallados:", error)
+      // En caso de error, mostrar la orden sin gastos detallados
+      setSelectedWorkOrder(order)
+    }
+    
     setIsDetailModalOpen(true)
   }
 
   // Add after handleViewWorkOrder function
-  const handleEditWorkOrder = (order: WorkOrder) => {
-    // Generate mock expenses for editing (in real app, this would come from the API)
-    const mockExpenses = [
-      { id: "1", item: "Aceite Repsol 5W-30", amount: (order.expenses * 0.4).toString() },
-      { id: "2", item: "Filtro de aceite", amount: (order.expenses * 0.2).toString() },
-      { id: "3", item: "Pastillas de freno", amount: (order.expenses * 0.3).toString() },
-      { id: "4", item: "Mano de obra", amount: (order.expenses * 0.1).toString() },
-    ].filter((expense) => Number.parseFloat(expense.amount) > 0)
+  const handleEditWorkOrder = async (order: WorkOrder) => {
+    try {
+      // Extraer el ID numérico del trabajo (e.g., "WO-010" -> 10)
+      const workOrderId = parseInt(order.id.replace("WO-", ""))
+      
+      // Obtener los gastos detallados del backend para edición
+      const response = await fetch(`http://localhost:8000/api/trabajos/trabajo/${workOrderId}/gastos`)
+      
+      let expensesToEdit = []
+      
+      if (response.ok) {
+        const expenseDetails = await response.json()
+        expensesToEdit = expenseDetails.map((expense: any) => ({
+          id: expense.id,
+          item: expense.descripcion,
+          amount: expense.monto.toString()
+        }))
+      } else {
+        // Si no se pueden obtener los gastos, crear gastos vacíos para edición
+        console.warn("No se pudieron obtener los gastos detallados para edición")
+        expensesToEdit = [
+          { id: "1", item: "", amount: "" },
+          { id: "2", item: "", amount: "" }
+        ]
+      }
 
-    setEditOrder({
-      id: order.id,
-      description: order.description,
-      totalCost: order.totalCost.toString(),
-      expenses: mockExpenses,
-    })
-    setIsEditModalOpen(true)
+      setEditOrder({
+        id: order.id,
+        description: order.description,
+        totalCost: order.totalCost.toString(),
+        expenses: expensesToEdit,
+      })
+      setIsEditModalOpen(true)
+    } catch (error) {
+      console.error("Error al obtener gastos para edición:", error)
+      // En caso de error, usar gastos vacíos
+      setEditOrder({
+        id: order.id,
+        description: order.description,
+        totalCost: order.totalCost.toString(),
+        expenses: [
+          { id: "1", item: "", amount: "" },
+          { id: "2", item: "", amount: "" }
+        ],
+      })
+      setIsEditModalOpen(true)
+    }
   }
 
   const handleDeleteWorkOrder = (order: WorkOrder) => {
@@ -523,9 +595,9 @@ export function WorkOrdersSection() {
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("es-MX", {
+    return new Intl.NumberFormat("es-CR", {
       style: "currency",
-      currency: "MXN",
+      currency: "CRC",
     }).format(amount)
   }
 
@@ -1141,7 +1213,7 @@ export function WorkOrdersSection() {
                       {/* Cost and profit - Mobile view */}
                       <div className="flex sm:hidden justify-between items-center pt-2 border-t">
                         <div className="flex items-center gap-2">
-                          <DollarSign className="h-4 w-4 text-green-600" />
+                          <Coins className="h-4 w-4 text-green-600" />
                           <span className="font-medium text-green-600">{formatCurrency(order.totalCost)}</span>
                         </div>
                         <span className="text-xs text-muted-foreground">Ganancia: {formatCurrency(order.profit)}</span>
@@ -1152,7 +1224,7 @@ export function WorkOrdersSection() {
                     <div className="hidden sm:flex sm:items-center sm:gap-4">
                       <div className="text-right">
                         <div className="flex items-center gap-1 text-lg font-bold text-green-600">
-                          <DollarSign className="h-4 w-4" />
+                          <Coins className="h-4 w-4" />
                           {formatCurrency(order.totalCost)}
                         </div>
                         <div className="text-xs text-muted-foreground">Ganancia: {formatCurrency(order.profit)}</div>
@@ -1340,57 +1412,78 @@ export function WorkOrdersSection() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <DollarSign className="h-4 w-4" />
+                    <Coins className="h-4 w-4" />
                     Detalle de Gastos
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {/* Mock expenses data - in real app this would come from the work order */}
-                  {(() => {
-                    // Generate mock expenses for the selected work order
-                    const mockExpenses = [
-                      { id: "1", item: "Aceite Repsol 5W-30", amount: selectedWorkOrder.expenses * 0.4 },
-                      { id: "2", item: "Filtro de aceite", amount: selectedWorkOrder.expenses * 0.2 },
-                      { id: "3", item: "Pastillas de freno", amount: selectedWorkOrder.expenses * 0.3 },
-                      { id: "4", item: "Mano de obra", amount: selectedWorkOrder.expenses * 0.1 },
-                    ].filter((expense) => expense.amount > 0)
-
-                    return (
-                      <div className="space-y-2">
-                        {mockExpenses.map((expense, index) => (
-                          <div
-                            key={expense.id}
-                            className="flex justify-between items-center py-2 border-b last:border-b-0"
-                          >
-                            <span className="text-sm">{expense.item}</span>
-                            <span className="font-medium text-red-600">{formatCurrency(expense.amount)}</span>
-                          </div>
-                        ))}
-
-                        {/* Total expenses */}
-                        <div className="flex justify-between items-center py-2 pt-3 border-t font-semibold">
-                          <span className="text-sm">Total de Gastos:</span>
-                          <span className="text-red-600">{formatCurrency(selectedWorkOrder.expenses)}</span>
+                  {selectedWorkOrder.expenseDetails && selectedWorkOrder.expenseDetails.length > 0 ? (
+                    <div className="space-y-2">
+                      {/* Mostrar gastos reales */}
+                      {selectedWorkOrder.expenseDetails.map((expense) => (
+                        <div
+                          key={expense.id}
+                          className="flex justify-between items-center py-2 border-b last:border-b-0"
+                        >
+                          <span className="text-sm">{expense.item}</span>
+                          <span className="font-medium text-red-600">{formatCurrency(Number(expense.amount))}</span>
                         </div>
+                      ))}
 
-                        {/* Total cost and profit */}
-                        <div className="space-y-2 pt-2">
-                          <div className="flex justify-between py-1">
-                            <span className="text-sm font-medium">Costo Total Cobrado:</span>
-                            <span className="font-semibold text-lg text-green-600">
-                              {formatCurrency(selectedWorkOrder.totalCost)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between py-1">
-                            <span className="text-sm font-medium">Ganancia Neta:</span>
-                            <span className="font-semibold text-lg text-blue-600">
-                              {formatCurrency(selectedWorkOrder.profit)}
-                            </span>
-                          </div>
+                      {/* Total de gastos */}
+                      <div className="flex justify-between items-center py-2 pt-3 border-t font-semibold">
+                        <span className="text-sm">Total de Gastos:</span>
+                        <span className="text-red-600">{formatCurrency(selectedWorkOrder.expenses)}</span>
+                      </div>
+
+                      {/* Costo total y ganancia */}
+                      <div className="space-y-2 pt-2">
+                        <div className="flex justify-between py-1">
+                          <span className="text-sm font-medium">Costo Total Cobrado:</span>
+                          <span className="font-semibold text-lg text-green-600">
+                            {formatCurrency(selectedWorkOrder.totalCost)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-1">
+                          <span className="text-sm font-medium">Ganancia Neta:</span>
+                          <span className="font-semibold text-lg text-blue-600">
+                            {formatCurrency(selectedWorkOrder.profit)}
+                          </span>
                         </div>
                       </div>
-                    )
-                  })()}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {/* Mensaje cuando no hay gastos detallados */}
+                      <div className="text-center py-4 text-sm text-muted-foreground">
+                        <Coins className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                        <p>No hay gastos detallados disponibles</p>
+                        <p className="text-xs">Los gastos se mostrarán aquí cuando estén disponibles</p>
+                      </div>
+
+                      {/* Total de gastos (solo el monto total) */}
+                      <div className="flex justify-between items-center py-2 pt-3 border-t font-semibold">
+                        <span className="text-sm">Total de Gastos:</span>
+                        <span className="text-red-600">{formatCurrency(selectedWorkOrder.expenses)}</span>
+                      </div>
+
+                      {/* Costo total y ganancia */}
+                      <div className="space-y-2 pt-2">
+                        <div className="flex justify-between py-1">
+                          <span className="text-sm font-medium">Costo Total Cobrado:</span>
+                          <span className="font-semibold text-lg text-green-600">
+                            {formatCurrency(selectedWorkOrder.totalCost)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-1">
+                          <span className="text-sm font-medium">Ganancia Neta:</span>
+                          <span className="font-semibold text-lg text-blue-600">
+                            {formatCurrency(selectedWorkOrder.profit)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 

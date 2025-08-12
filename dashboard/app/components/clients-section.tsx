@@ -173,6 +173,7 @@ export function ClientsSection() {
 
     return clients.filter(
       (client) =>
+        client.id.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
         client.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
         client.email.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
         client.phone.includes(debouncedSearchTerm),

@@ -135,15 +135,55 @@ def actualizar_info_carro(matricula: str, data: CarroSchema, db: Session = Depen
     if not carro_db:
         raise HTTPException(status_code=404, detail="Carro no encontrado")
 
+    # Verificar si el dueño cambió
+    dueño_cambio = False
+    if carro_db.id_cliente_actual != data.id_cliente_actual:
+        dueño_cambio = True
+        print(f"🔄 Dueño cambió de {carro_db.id_cliente_actual} a {data.id_cliente_actual}")
+
+    # Actualizar información básica del carro
     carro_db.marca = data.marca
     carro_db.modelo = data.modelo
     carro_db.anio = data.anio
+    
+    # Si cambió el dueño, manejar el historial
+    if dueño_cambio and carro_db.id_cliente_actual:
+        # 1. Cerrar el historial del dueño anterior
+        historial_anterior = (
+            db.query(HistorialDueno)
+            .filter(
+                HistorialDueno.matricula_carro == matricula,
+                HistorialDueno.id_cliente == carro_db.id_cliente_actual,
+                HistorialDueno.fecha_fin == None
+            )
+            .first()
+        )
+        
+        if historial_anterior:
+            historial_anterior.fecha_fin = datetime.utcnow()
+            print(f"✅ Historial anterior cerrado: {historial_anterior.id}")
+        
+        # 2. Crear nuevo historial para el nuevo dueño
+        nuevo_historial = HistorialDueno(
+            matricula_carro=matricula,
+            id_cliente=data.id_cliente_actual,
+            fecha_inicio=datetime.utcnow(),
+            fecha_fin=None
+        )
+        db.add(nuevo_historial)
+        print(f"✅ Nuevo historial creado para: {data.id_cliente_actual}")
+    
+    # Actualizar el dueño actual
     carro_db.id_cliente_actual = data.id_cliente_actual
 
     db.commit()
     db.refresh(carro_db)
 
-    return {"message": "Información del carro actualizada correctamente"}
+    mensaje = "Información del carro actualizada correctamente"
+    if dueño_cambio:
+        mensaje += ". El historial de dueños ha sido actualizado."
+
+    return {"message": mensaje}
 
 
 # ✅ ELIMINAR UN CARRO Y SU HISTORIAL

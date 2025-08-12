@@ -7,13 +7,11 @@ import { DashboardContent } from "./components/dashboard-content"
 import { CarsSection } from "./components/cars-section"
 import { WorkOrdersSection } from "./components/work-orders-section"
 import { ClientsSection } from "./components/clients-section"
-import { SettingsSection } from "./components/settings-section"
-import { SearchSection } from "./components/search-section"
+
 import { ReportsSection } from "./components/reports-section"
 
 export default function Dashboard() {
   const [activeSection, setActiveSection] = useState("dashboard")
-  const [searchQuery, setSearchQuery] = useState("")
 
   const renderContent = () => {
     switch (activeSection) {
@@ -25,10 +23,6 @@ export default function Dashboard() {
         return <WorkOrdersSection />
       case "clients":
         return <ClientsSection />
-      case "settings":
-        return <SettingsSection />
-      case "search":
-        return <SearchSection searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
       case "reports":
         return <ReportsSection />
       default:

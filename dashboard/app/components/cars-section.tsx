@@ -243,6 +243,35 @@ export function CarsSection() {
   const handleUpdateCar = async () => {
     if (editingCar && editingCar.licensePlate && editingCar.brand && editingCar.model && editingCar.ownerId) {
       try {
+        // Verificar si el propietario realmente cambió
+        const originalCar = cars.find(car => car.licensePlate === editingCar.licensePlate)
+        const ownerChanged = originalCar && originalCar.ownerId !== editingCar.ownerId
+
+        // Si cambió el propietario, registrar en el historial
+        if (ownerChanged && originalCar) {
+          try {
+            const historyResponse = await fetch("http://localhost:8000/api/historial-duenos/", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                matricula_carro: editingCar.licensePlate,
+                id_cliente_anterior: originalCar.ownerId,
+                id_cliente_nuevo: editingCar.ownerId,
+                fecha_cambio: new Date().toISOString().split('T')[0],
+                motivo_cambio: "Cambio de propietario desde la interfaz"
+              })
+            })
+
+            if (!historyResponse.ok) {
+              console.warn("No se pudo registrar el historial de cambio de propietario")
+            }
+          } catch (historyError) {
+            console.warn("Error al registrar historial:", historyError)
+          }
+        }
+
         const response = await fetch(`http://localhost:8000/api/carros/${editingCar.licensePlate}`, {
           method: "PUT",
           headers: {
@@ -323,17 +352,92 @@ export function CarsSection() {
     await loadCarWorkHistory(car.licensePlate)
   }
 
-  const handleViewOwnerHistory = (car: Car) => {
+  const handleViewOwnerHistory = async (car: Car) => {
     setSelectedCar(car)
     setIsOwnerHistoryModalOpen(true)
+    // Cargar el historial de propietarios
+    await loadCarOwnershipHistory(car.licensePlate)
+  }
+
+  const [carOwnershipHistory, setCarOwnershipHistory] = useState<OwnershipHistory[]>([])
+
+  const loadCarOwnershipHistory = async (matricula: string) => {
+    console.log("🔍 loadCarOwnershipHistory called with matricula:", matricula)
+    try {
+      const history = await getCarOwnershipHistory(matricula)
+      console.log("🔍 Historial obtenido:", history)
+      setCarOwnershipHistory(history)
+    } catch (error) {
+      console.error("Error al cargar historial de propietarios:", error)
+      setCarOwnershipHistory([])
+    }
   }
 
   
 
-  const getCarOwnershipHistory = (carId: string): OwnershipHistory[] => {
-    // TODO: Implement API call for ownership history
-    // For now, return empty array since we don't have this endpoint yet
-    return []
+  const getCarOwnershipHistory = async (matricula: string): Promise<OwnershipHistory[]> => {
+    console.log("🔍 getCarOwnershipHistory called with matricula:", matricula)
+    try {
+      const url = `http://localhost:8000/api/carro/${matricula}/historial`
+      console.log("🔍 Fetching from URL:", url)
+      
+      const response = await fetch(url)
+      console.log("🔍 Response status:", response.status)
+      
+      if (response.status === 404) {
+        console.log("🔍 No hay historial para este vehículo (404) - esto es normal para vehículos nuevos")
+        return []
+      }
+      
+      if (!response.ok) {
+        console.warn("No se pudo obtener el historial de propietarios, status:", response.status)
+        return []
+      }
+      
+      const data = await response.json()
+      console.log("🔍 Raw data from API:", data)
+      console.log("🔍 Data type:", typeof data)
+      console.log("🔍 Data length:", Array.isArray(data) ? data.length : "Not an array")
+      
+      if (!Array.isArray(data)) {
+        console.warn("⚠️ API no retornó un array:", data)
+        return []
+      }
+      
+      // Ahora el backend retorna TODOS los registros, incluyendo el actual
+      // El propietario actual es el que tiene fecha_fin = null
+      // Los propietarios anteriores son los que tienen fecha_fin establecida
+      console.log("🔍 Processing all records from API:", data.length)
+      
+      // Filtrar solo los registros que tienen fecha_fin (propietarios anteriores)
+      const previousOwners = data.filter((item: any) => {
+        console.log("🔍 Checking item:", item)
+        console.log("🔍 Item fecha_fin:", item.fecha_fin)
+        console.log("🔍 Item fecha_fin type:", typeof item.fecha_fin)
+        console.log("🔍 Item fecha_fin !== null:", item.fecha_fin !== null)
+        return item.fecha_fin !== null
+      })
+      
+      console.log("🔍 Previous owners found:", previousOwners.length)
+      
+      const mappedData = previousOwners.map((item: any) => ({
+        id: item.id.toString(),
+        carId: item.matricula_carro,
+        ownerId: item.id_cliente_anterior,
+        ownerName: item.nombre_cliente_anterior || "Cliente no encontrado",
+        ownerEmail: item.email_cliente_anterior,
+        ownerPhone: item.telefono_cliente_anterior,
+        startDate: item.fecha_cambio,
+        endDate: item.fecha_fin,
+        transferReason: item.motivo_cambio
+      }))
+      
+      console.log("🔍 Mapped data (previous owners only):", mappedData)
+      return mappedData
+    } catch (error) {
+      console.error("Error al obtener historial de propietarios:", error)
+      return []
+    }
   }
 
   const formatCurrency = (amount: number) => {
@@ -385,13 +489,14 @@ export function CarsSection() {
 
   // Add this function after handlePrintInvoice
   const handleSearch = async (query: string) => {
+    console.log("🔍 handleSearch called with query:", query)
     setSearchQuery(query)
 
     if (!query.trim()) {
-      // Don't call loadCars here - just reset to current cars
-      setFilteredCars(cars)
+      console.log("🔍 Empty query, reloading all cars...")
+      // Reload cars to ensure we have the complete list
+      await loadCars(1, true)
       setHasMore(true) // Re-enable infinite scroll
-      setIsSearching(false)
       return
     }
 
@@ -402,6 +507,7 @@ export function CarsSection() {
       // For now, filter the current loaded cars
       const filtered = cars.filter(
         (car: Car) =>
+          car.id.toLowerCase().includes(query.toLowerCase()) ||
           car.licensePlate.toLowerCase().includes(query.toLowerCase()) ||
           car.owner.toLowerCase().includes(query.toLowerCase()) ||
           car.brand.toLowerCase().includes(query.toLowerCase()) ||
@@ -419,11 +525,9 @@ export function CarsSection() {
     }
   }
 
-  const clearSearch = async () => {
+  const clearSearch = () => {
     setSearchQuery("")
     setIsSearching(false)
-    setFilteredCars(cars) // Reset to current loaded cars
-    setHasMore(page < Math.ceil(totalCars / 20)) // Re-enable infinite scroll if there are more pages
   }
 
   // Add useEffect to initialize filtered cars and handle search
@@ -450,9 +554,15 @@ export function CarsSection() {
 
   // Add this useEffect instead - only depends on searchQuery
   useEffect(() => {
+    console.log("🔍 useEffect triggered, searchQuery:", searchQuery)
     const timeoutId = setTimeout(() => {
       if (searchQuery.trim()) {
+        console.log("🔍 Calling handleSearch with query:", searchQuery)
         handleSearch(searchQuery)
+      } else if (searchQuery === "") {
+        console.log("🔍 Search cleared, calling handleSearch with empty string")
+        // When search is completely cleared, reload all cars
+        handleSearch("")
       }
     }, 300) // Debounce search
 
@@ -721,26 +831,36 @@ export function CarsSection() {
                       <Label htmlFor="edit-ownerId" className="sm:text-right text-sm">
                         Propietario
                       </Label>
-                      <select
-                        id="edit-ownerId"
-                        value={editingCar.ownerId}
-                        onChange={(e) => {
-                          const selectedOwner = owners.find((owner) => owner.id === e.target.value)
-                          setEditingCar({
-                            ...editingCar,
-                            ownerId: e.target.value,
-                            owner: selectedOwner?.name || "",
-                          })
-                        }}
-                        className="sm:col-span-3 w-full p-2 border border-gray-300 rounded-md text-sm"
-                      >
-                        <option value="">Seleccionar propietario...</option>
-                        {owners.map((owner) => (
-                          <option key={owner.id} value={owner.id}>
-                            {owner.name}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="sm:col-span-3">
+                        <Select
+                          value={ownerOptions.find(option => option.value === editingCar.ownerId)}
+                          onChange={(selectedOption) => {
+                            if (selectedOption) {
+                              setEditingCar({
+                                ...editingCar,
+                                ownerId: selectedOption.value,
+                                owner: selectedOption.label,
+                              })
+                            }
+                          }}
+                          options={ownerOptions}
+                          placeholder="Seleccionar propietario..."
+                          isSearchable={true}
+                          isClearable={true}
+                          className="text-sm"
+                          styles={{
+                            control: (provided) => ({
+                              ...provided,
+                              minHeight: '40px',
+                              fontSize: '14px',
+                            }),
+                            option: (provided) => ({
+                              ...provided,
+                              fontSize: '14px',
+                            }),
+                          }}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1125,7 +1245,7 @@ export function CarsSection() {
                     <CardContent className="p-4">
                       <div className="text-center">
                         <div className="text-2xl font-bold text-purple-600">
-                          {getCarOwnershipHistory(selectedCar.id).length || 1}
+                          {carOwnershipHistory.length + 1}
                         </div>
                         <div className="text-sm text-muted-foreground">Historial de Propietarios</div>
                         <div className="text-xs text-purple-600 mt-1">Click para ver historial</div>
@@ -1364,8 +1484,19 @@ export function CarsSection() {
 
           {selectedCar && (
             <div className="space-y-4">
+
+              
               <div className="text-sm text-muted-foreground">
-                Total de propietarios: {getCarOwnershipHistory(selectedCar.id).length || 1}
+                Total de propietarios: {carOwnershipHistory.length + 1}
+              </div>
+
+              {/* Info message */}
+              <div className="text-xs text-blue-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
+                <strong>💡 Información:</strong> El historial muestra solo los propietarios anteriores. 
+                El propietario actual se muestra en la tarjeta verde arriba. 
+                <br/><br/>
+                <strong>🔍 Estado actual:</strong> Este vehículo tiene {carOwnershipHistory.length} propietario(s) anterior(es) registrado(s).
+                {carOwnershipHistory.length === 0 && " Para crear historial, edita el vehículo y cambia el propietario."}
               </div>
 
               <div className="space-y-4">
@@ -1408,13 +1539,13 @@ export function CarsSection() {
                 </Card>
 
                 {/* Previous Owners */}
-                {getCarOwnershipHistory(selectedCar.id).length > 0 ? (
+                {carOwnershipHistory.length > 0 ? (
                   <div className="space-y-4">
                     <h4 className="font-semibold text-lg flex items-center gap-2">
                       <TrendingUp className="h-4 w-4" />
-                      Propietarios Anteriores
+                      Propietarios Anteriores ({carOwnershipHistory.length})
                     </h4>
-                    {getCarOwnershipHistory(selectedCar.id).map((history) => (
+                    {carOwnershipHistory.map((history: OwnershipHistory) => (
                       <Card key={history.id} className="border-l-4 border-l-gray-400">
                         <CardContent className="p-4">
                           <div className="flex justify-between items-start mb-3">
@@ -1466,6 +1597,17 @@ export function CarsSection() {
                     <p className="text-muted-foreground">
                       Este vehículo no ha tenido cambios de propietario registrados.
                     </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      El historial se creará automáticamente cuando cambies el propietario.
+                    </p>
+                    <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-sm text-blue-800">
+                        <strong>💡 Para crear historial:</strong><br/>
+                        1. Edita este vehículo<br/>
+                        2. Cambia el propietario a otro cliente<br/>
+                        3. El historial se creará automáticamente
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>

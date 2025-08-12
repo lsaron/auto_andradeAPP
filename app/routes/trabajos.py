@@ -211,3 +211,25 @@ def generar_factura_pdf(id: int, aplicar_iva: bool = True, db: Session = Depends
     return Response(content=pdf, media_type="application/pdf", headers={
         "Content-Disposition": f"inline; filename=factura_trabajo_{id}.pdf"
     })
+
+
+# OBTENER SOLO LOS GASTOS DE UN TRABAJO
+@router.get("/trabajo/{id}/gastos")
+def obtener_gastos_trabajo(id: int, db: Session = Depends(get_db)):
+    """Obtener solo los gastos detallados de un trabajo específico"""
+    trabajo = db.query(Trabajo).filter(Trabajo.id == id).first()
+    if not trabajo:
+        raise HTTPException(status_code=404, detail="Trabajo no encontrado")
+    
+    # Obtener todos los gastos del trabajo
+    gastos = db.query(DetalleGasto).filter(DetalleGasto.id_trabajo == id).all()
+    
+    resultado = []
+    for gasto in gastos:
+        resultado.append({
+            "id": gasto.id,
+            "descripcion": gasto.descripcion,
+            "monto": float(gasto.monto)
+        })
+    
+    return resultado

@@ -71,7 +71,7 @@ export function DashboardContent() {
 
       // Get recent work orders (last 5, ordered by most recent first)
       const recentWorkOrders = workOrdersData
-        .sort((a: any, b: any) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+        .sort((a: any, b: any) => b.id - a.id) // Order by ID descending (newest first)
         .slice(0, 5)
         .map((order: any) => ({
           id: order.id,
@@ -214,10 +214,10 @@ export function DashboardContent() {
       </div>
 
       {/* Stats Grid - Responsive with proper aspect ratios */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         {loading ? (
           // Loading skeleton for stats
-          Array.from({ length: 3 }).map((_, index) => (
+          Array.from({ length: 4 }).map((_, index) => (
             <Card key={index} className="hover:shadow-lg transition-all duration-200 aspect-square sm:aspect-auto">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-3 sm:p-4 lg:p-6">
                 <div className="h-4 bg-gray-200 rounded w-20 animate-pulse"></div>
@@ -245,24 +245,22 @@ export function DashboardContent() {
                 </CardContent>
               </Card>
             ))}
+            
+            {/* Date/Time Card */}
+            <Card className="hover:shadow-lg transition-all duration-200 aspect-square sm:aspect-auto">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-3 sm:p-4 lg:p-6">
+                <CardTitle className="text-xs sm:text-sm font-medium leading-tight">{dateTimeCard.title}</CardTitle>
+                <div className={`p-2 rounded-full ${dateTimeCard.bgColor} flex-shrink-0`}>
+                  <dateTimeCard.icon className={`h-3 w-3 sm:h-4 sm:w-4 ${dateTimeCard.color}`} />
+                </div>
+              </CardHeader>
+              <CardContent className="p-3 sm:p-4 lg:p-6 pt-0">
+                <div className="text-xl sm:text-2xl lg:text-3xl font-bold">{dateTimeCard.value}</div>
+                <div className="text-xs sm:text-sm text-muted-foreground mt-1 leading-tight">{dateTimeCard.subtitle}</div>
+              </CardContent>
+            </Card>
           </>
         )}
-      </div>
-
-      {/* Date/Time Card - Separate row */}
-      <div className="flex justify-center">
-        <Card className="w-full max-w-md hover:shadow-lg transition-all duration-200">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-3 sm:p-4 lg:p-6">
-            <CardTitle className="text-xs sm:text-sm font-medium leading-tight">{dateTimeCard.title}</CardTitle>
-            <div className={`p-2 rounded-full ${dateTimeCard.bgColor} flex-shrink-0`}>
-              <dateTimeCard.icon className={`h-3 w-3 sm:h-4 sm:w-4 ${dateTimeCard.color}`} />
-            </div>
-          </CardHeader>
-          <CardContent className="p-3 sm:p-4 lg:p-6 pt-0">
-            <div className="text-xl sm:text-2xl lg:text-3xl font-bold">{dateTimeCard.value}</div>
-            <div className="text-xs sm:text-sm text-muted-foreground mt-1 leading-tight">{dateTimeCard.subtitle}</div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Content Grid - Responsive layout */}
@@ -296,7 +294,7 @@ export function DashboardContent() {
                     className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-gray-50 rounded-lg gap-2 sm:gap-4"
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm sm:text-base truncate">Trabajo #{job.id}</p>
+                      <p className="font-medium text-sm sm:text-base truncate">WO-{String(job.id).padStart(3, '0')}</p>
                       <p className="text-xs sm:text-sm text-muted-foreground">Placa: {job.licensePlate}</p>
                       <p className="text-xs sm:text-sm text-muted-foreground truncate">{job.description}</p>
                       <p className="text-xs text-muted-foreground">{formatDate(job.date)}</p>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -27,118 +27,126 @@ interface WorkOrderReport {
 }
 
 export function ReportsSection() {
-  const [selectedMonth, setSelectedMonth] = useState("2024-01")
+  const [selectedMonth, setSelectedMonth] = useState("")
+  const [monthlyReports, setMonthlyReports] = useState<MonthlyReport[]>([])
+  const [workOrdersReport, setWorkOrdersReport] = useState<WorkOrderReport[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [currentReport, setCurrentReport] = useState<MonthlyReport | null>(null)
+  const [previousReport, setPreviousReport] = useState<MonthlyReport | null>(null)
 
-  // Mock data - En producción esto vendría de la API
-  const monthlyReports: MonthlyReport[] = [
-    {
-      month: "Enero",
-      year: 2024,
-      totalIncome: 125000,
-      totalExpenses: 45000,
-      netProfit: 80000,
-    },
-    {
-      month: "Diciembre",
-      year: 2023,
-      totalIncome: 98000,
-      totalExpenses: 38000,
-      netProfit: 60000,
-    },
-    {
-      month: "Noviembre",
-      year: 2023,
-      totalIncome: 110000,
-      totalExpenses: 42000,
-      netProfit: 68000,
-    },
-  ]
+  // Cargar datos reales del backend
+  const loadReportsData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
 
-  const workOrdersReport: WorkOrderReport[] = [
-    {
-      id: "WO-001",
-      date: "2024-01-15",
-      licensePlate: "ABC-123",
-      clientName: "Juan Pérez García",
-      description: "Cambio de aceite y filtros, revisión general",
-      income: 1200,
-      expenses: 350,
-      profit: 850,
-    },
-    {
-      id: "WO-002",
-      date: "2024-01-16",
-      licensePlate: "XYZ-789",
-      clientName: "María García López",
-      description: "Reparación de frenos delanteros y traseros",
-      income: 2500,
-      expenses: 800,
-      profit: 1700,
-    },
-    {
-      id: "WO-003",
-      date: "2024-01-17",
-      licensePlate: "DEF-456",
-      clientName: "Carlos López Martínez",
-      description: "Revisión general del motor y cambio de bujías",
-      income: 3500,
-      expenses: 1200,
-      profit: 2300,
-    },
-    {
-      id: "WO-004",
-      date: "2024-01-18",
-      licensePlate: "GHI-789",
-      clientName: "Ana Rodríguez",
-      description: "Cambio de llantas y alineación",
-      income: 4200,
-      expenses: 2800,
-      profit: 1400,
-    },
-    {
-      id: "WO-005",
-      date: "2024-01-19",
-      licensePlate: "JKL-012",
-      clientName: "Pedro Martínez",
-      description: "Reparación de transmisión",
-      income: 8500,
-      expenses: 3500,
-      profit: 5000,
-    },
-    {
-      id: "WO-006",
-      date: "2024-01-20",
-      licensePlate: "MNO-345",
-      clientName: "Laura Sánchez",
-      description: "Cambio de batería y alternador",
-      income: 2800,
-      expenses: 1800,
-      profit: 1000,
-    },
-    {
-      id: "WO-007",
-      date: "2024-01-22",
-      licensePlate: "PQR-678",
-      clientName: "Roberto González",
-      description: "Servicio de aire acondicionado",
-      income: 1800,
-      expenses: 600,
-      profit: 1200,
-    },
-    {
-      id: "WO-008",
-      date: "2024-01-23",
-      licensePlate: "STU-901",
-      clientName: "Carmen Jiménez",
-      description: "Cambio de amortiguadores",
-      income: 3200,
-      expenses: 1900,
-      profit: 1300,
-    },
-  ]
+      // Obtener todos los trabajos del backend
+      const response = await fetch("http://localhost:8000/api/trabajos/")
+      if (!response.ok) {
+        throw new Error("Error al cargar los trabajos")
+      }
 
-  const currentReport = monthlyReports[0] // Enero 2024
-  const previousReport = monthlyReports[1] // Diciembre 2023
+      const trabajos = await response.json()
+      console.log("📊 Trabajos cargados:", trabajos)
+
+      // Transformar datos del backend al formato del frontend
+      const transformedWorkOrders: WorkOrderReport[] = trabajos.map((trabajo: any) => ({
+        id: `WO-${trabajo.id.toString().padStart(3, '0')}`,
+        date: trabajo.fecha,
+        licensePlate: trabajo.matricula_carro,
+        clientName: trabajo.cliente_nombre,
+        description: trabajo.descripcion,
+        income: trabajo.costo,
+        expenses: trabajo.total_gastos,
+        profit: trabajo.ganancia,
+      }))
+
+      setWorkOrdersReport(transformedWorkOrders)
+
+      // Generar reportes mensuales basados en los datos reales
+      const monthlyData = generateMonthlyReports(transformedWorkOrders)
+      setMonthlyReports(monthlyData)
+
+      // Establecer mes actual y anterior
+      if (monthlyData.length > 0) {
+        setCurrentReport(monthlyData[0])
+        setPreviousReport(monthlyData.length > 1 ? monthlyData[1] : null)
+        
+        // Establecer el mes seleccionado por defecto
+        const currentMonth = monthlyData[0]
+        setSelectedMonth(`${currentMonth.year}-${String(currentMonth.month).padStart(2, '0')}`)
+      }
+
+    } catch (error) {
+      console.error("Error cargando reportes:", error)
+      setError("Error al cargar los datos de reportes")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Función para generar reportes mensuales
+  const generateMonthlyReports = (workOrders: WorkOrderReport[]): MonthlyReport[] => {
+    const monthlyMap = new Map<string, MonthlyReport>()
+
+    workOrders.forEach(order => {
+      const date = new Date(order.date)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      const monthName = date.toLocaleDateString('es-ES', { month: 'long' })
+      
+      if (!monthlyMap.has(monthKey)) {
+        monthlyMap.set(monthKey, {
+          month: monthName.charAt(0).toUpperCase() + monthName.slice(1),
+          year: date.getFullYear(),
+          totalIncome: 0,
+          totalExpenses: 0,
+          netProfit: 0,
+        })
+      }
+
+      const monthData = monthlyMap.get(monthKey)!
+      monthData.totalIncome += order.income
+      monthData.totalExpenses += order.expenses
+      monthData.netProfit += order.profit
+    })
+
+    // Ordenar por fecha (más reciente primero)
+    return Array.from(monthlyMap.values())
+      .sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year
+        return getMonthNumber(b.month) - getMonthNumber(a.month)
+      })
+  }
+
+  // Función auxiliar para obtener número del mes
+  const getMonthNumber = (monthName: string): number => {
+    const months = [
+      'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+      'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+    ]
+    return months.findIndex(m => m.toLowerCase() === monthName.toLowerCase()) + 1
+  }
+
+  // Filtrar trabajos por mes seleccionado
+  const getWorkOrdersForSelectedMonth = () => {
+    if (!selectedMonth) return workOrdersReport
+    
+    const [year, month] = selectedMonth.split('-')
+    return workOrdersReport.filter(order => {
+      const orderDate = new Date(order.date)
+      return orderDate.getFullYear() === parseInt(year) && 
+             (orderDate.getMonth() + 1) === parseInt(month)
+    })
+  }
+
+  // Obtener trabajos del mes seleccionado
+  const filteredWorkOrders = getWorkOrdersForSelectedMonth()
+
+  // Cargar datos al montar el componente
+  useEffect(() => {
+    loadReportsData()
+  }, [])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("es-CR", {
@@ -172,9 +180,56 @@ export function ReportsSection() {
     return "text-gray-600"
   }
 
-  const incomeChange = calculatePercentageChange(currentReport.totalIncome, previousReport.totalIncome)
-  const expenseChange = calculatePercentageChange(currentReport.totalExpenses, previousReport.totalExpenses)
-  const profitChange = calculatePercentageChange(currentReport.netProfit, previousReport.netProfit)
+  // Calcular cambios porcentuales solo si hay reportes disponibles
+  const incomeChange = currentReport && previousReport 
+    ? calculatePercentageChange(currentReport.totalIncome, previousReport.totalExpenses)
+    : 0
+  const expenseChange = currentReport && previousReport 
+    ? calculatePercentageChange(currentReport.totalExpenses, previousReport.totalExpenses)
+    : 0
+  const profitChange = currentReport && previousReport 
+    ? calculatePercentageChange(currentReport.netProfit, previousReport.netProfit)
+    : 0
+
+  // Mostrar estado de carga o error
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-lg text-muted-foreground">Cargando reportes...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center py-12">
+          <div className="text-red-600 text-6xl mb-4">⚠️</div>
+          <h2 className="text-xl font-semibold text-red-600 mb-2">Error al cargar reportes</h2>
+          <p className="text-muted-foreground mb-4">{error}</p>
+          <Button onClick={loadReportsData} variant="outline">
+            Reintentar
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Si no hay datos, mostrar mensaje
+  if (!currentReport || monthlyReports.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center py-12">
+          <div className="text-gray-400 text-6xl mb-4">📊</div>
+          <h2 className="text-xl font-semibold text-gray-600 mb-2">No hay datos disponibles</h2>
+          <p className="text-muted-foreground">No se encontraron trabajos para generar reportes</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -192,9 +247,14 @@ export function ReportsSection() {
               <SelectValue placeholder="Seleccionar mes" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="2024-01">Enero 2024</SelectItem>
-              <SelectItem value="2023-12">Diciembre 2023</SelectItem>
-              <SelectItem value="2023-11">Noviembre 2023</SelectItem>
+              {monthlyReports.map((report) => (
+                <SelectItem 
+                  key={`${report.year}-${String(getMonthNumber(report.month)).padStart(2, '0')}`}
+                  value={`${report.year}-${String(getMonthNumber(report.month)).padStart(2, '0')}`}
+                >
+                  {report.month} {report.year}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Button variant="outline" className="w-full sm:w-auto bg-transparent">
@@ -319,7 +379,9 @@ export function ReportsSection() {
       {/* Work Orders for the Month */}
       <Card className="w-full">
         <CardHeader className="p-4 sm:p-6">
-          <CardTitle className="text-lg sm:text-xl">Trabajos del Mes - Enero 2024</CardTitle>
+          <CardTitle className="text-lg sm:text-xl">
+          Trabajos del Mes - {currentReport.month} {currentReport.year}
+        </CardTitle>
           <p className="text-sm text-muted-foreground">
             Lista completa de todos los trabajos realizados en el mes seleccionado
           </p>
@@ -341,7 +403,7 @@ export function ReportsSection() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {workOrdersReport.map((order) => (
+                  {filteredWorkOrders.map((order) => (
                     <TableRow key={order.id} className="hover:bg-gray-50">
                       <TableCell className="px-2 sm:px-4 text-xs sm:text-sm">{formatDate(order.date)}</TableCell>
                       <TableCell className="font-medium px-2 sm:px-4 text-xs sm:text-sm">{order.id}</TableCell>
@@ -377,7 +439,7 @@ export function ReportsSection() {
             <CardTitle className="text-xs sm:text-sm font-medium">Total de Trabajos</CardTitle>
           </CardHeader>
           <CardContent className="p-3 sm:p-4 pt-0">
-            <div className="text-xl sm:text-2xl font-bold">{workOrdersReport.length}</div>
+            <div className="text-xl sm:text-2xl font-bold">{filteredWorkOrders.length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -386,7 +448,10 @@ export function ReportsSection() {
           </CardHeader>
           <CardContent className="p-3 sm:p-4 pt-0">
             <div className="text-xl sm:text-2xl font-bold text-green-600">
-              {formatCurrency(workOrdersReport.reduce((sum, order) => sum + order.income, 0) / workOrdersReport.length)}
+              {formatCurrency(filteredWorkOrders.length > 0 
+                ? filteredWorkOrders.reduce((sum, order) => sum + order.income, 0) / filteredWorkOrders.length
+                : 0
+              )}
             </div>
           </CardContent>
         </Card>
@@ -397,7 +462,9 @@ export function ReportsSection() {
           <CardContent className="p-3 sm:p-4 pt-0">
             <div className="text-xl sm:text-2xl font-bold text-red-600">
               {formatCurrency(
-                workOrdersReport.reduce((sum, order) => sum + order.expenses, 0) / workOrdersReport.length,
+                filteredWorkOrders.length > 0
+                  ? filteredWorkOrders.reduce((sum, order) => sum + order.expenses, 0) / filteredWorkOrders.length
+                  : 0
               )}
             </div>
           </CardContent>
@@ -408,12 +475,15 @@ export function ReportsSection() {
           </CardHeader>
           <CardContent className="p-3 sm:p-4 pt-0">
             <div className="text-xl sm:text-2xl font-bold text-blue-600">
-              {(
-                (workOrdersReport.reduce((sum, order) => sum + order.profit, 0) /
-                  workOrdersReport.reduce((sum, order) => sum + order.income, 0)) *
-                100
-              ).toFixed(1)}
-              %
+              {filteredWorkOrders.length > 0 && 
+               filteredWorkOrders.reduce((sum, order) => sum + order.income, 0) > 0
+                ? (
+                    (filteredWorkOrders.reduce((sum, order) => sum + order.profit, 0) /
+                     filteredWorkOrders.reduce((sum, order) => sum + order.income, 0)) *
+                    100
+                  ).toFixed(1)
+                : "0.0"
+              }%
             </div>
           </CardContent>
         </Card>

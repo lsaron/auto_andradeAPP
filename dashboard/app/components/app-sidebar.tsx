@@ -1,6 +1,6 @@
 "use client"
 
-import { Car, Home, Settings, Users, Wrench, Search, BarChart3 } from "lucide-react"
+import { Car, Home, Users, Wrench, BarChart3 } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -18,11 +18,6 @@ const menuItems = [
     title: "Panel Principal",
     url: "dashboard",
     icon: Home,
-  },
-  {
-    title: "Búsqueda",
-    url: "search",
-    icon: Search,
   },
   {
     title: "Vehículos",
@@ -43,11 +38,6 @@ const menuItems = [
     title: "Reportes",
     url: "reports",
     icon: BarChart3,
-  },
-  {
-    title: "Configuración",
-    url: "settings",
-    icon: Settings,
   },
 ]
 
