@@ -101,6 +101,28 @@ export interface WorkOrderUpdate {
   parts?: string[]
   labor_hours?: number
 }
+export interface Mechanic {
+  id: string
+  name: string
+  mechanic_id: string
+  jobs_completed: number
+  total_commission: number
+  total_profit: number
+  hire_date: string
+  created_at: string
+  updated_at: string
+}
+
+export interface MechanicCreate {
+  name: string
+  mechanic_id: string
+}
+
+export interface MechanicUpdate {
+  name?: string
+  mechanic_id?: string
+}
+
 
 export interface MonthlyReport {
   month: string

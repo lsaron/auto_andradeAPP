@@ -7,8 +7,8 @@ import { DashboardContent } from "./components/dashboard-content"
 import { CarsSection } from "./components/cars-section"
 import { WorkOrdersSection } from "./components/work-orders-section"
 import { ClientsSection } from "./components/clients-section"
-
 import { ReportsSection } from "./components/reports-section"
+import { MechanicsSection } from "./components/mechanics-section"
 
 export default function Dashboard() {
   const [activeSection, setActiveSection] = useState("dashboard")
@@ -23,6 +23,9 @@ export default function Dashboard() {
         return <WorkOrdersSection />
       case "clients":
         return <ClientsSection />
+        return <ClientsSection />
+      case "mechanics":
+        return <MechanicsSection />
       case "reports":
         return <ReportsSection />
       default:

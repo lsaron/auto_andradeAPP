@@ -27,6 +27,7 @@ interface WorkOrderReport {
 }
 
 export function ReportsSection() {
+  const [selectedYear, setSelectedYear] = useState("")
   const [selectedMonth, setSelectedMonth] = useState("")
   const [monthlyReports, setMonthlyReports] = useState<MonthlyReport[]>([])
   const [workOrdersReport, setWorkOrdersReport] = useState<WorkOrderReport[]>([])
@@ -49,6 +50,7 @@ export function ReportsSection() {
 
       const trabajos = await response.json()
       console.log("📊 Trabajos cargados:", trabajos)
+      console.log("📊 Total de trabajos:", trabajos.length)
 
       // Transformar datos del backend al formato del frontend
       const transformedWorkOrders: WorkOrderReport[] = trabajos.map((trabajo: any) => ({
@@ -73,9 +75,15 @@ export function ReportsSection() {
         setCurrentReport(monthlyData[0])
         setPreviousReport(monthlyData.length > 1 ? monthlyData[1] : null)
         
-        // Establecer el mes seleccionado por defecto
+        // Establecer el año y mes seleccionado por defecto
         const currentMonth = monthlyData[0]
-        setSelectedMonth(`${currentMonth.year}-${String(currentMonth.month).padStart(2, '0')}`)
+        const monthNumber = getMonthNumber(currentMonth.month)
+        const defaultMonth = `${currentMonth.year}-${String(monthNumber).padStart(2, '0')}`
+        
+        console.log("🔍 Año por defecto establecido:", currentMonth.year)
+        console.log("🔍 Mes por defecto establecido:", defaultMonth)
+        setSelectedYear(currentMonth.year.toString())
+        setSelectedMonth(defaultMonth)
       }
 
     } catch (error) {
@@ -128,16 +136,36 @@ export function ReportsSection() {
     return months.findIndex(m => m.toLowerCase() === monthName.toLowerCase()) + 1
   }
 
-  // Filtrar trabajos por mes seleccionado
+  // Función para obtener años únicos de los reportes
+  const getUniqueYears = () => {
+    const years = [...new Set(monthlyReports.map(report => report.year))]
+    return years.sort((a, b) => b - a) // Ordenar de más reciente a más antiguo
+  }
+
+  // Función para filtrar reportes por año
+  const getReportsForYear = (year: number) => {
+    return monthlyReports.filter(report => report.year === year)
+  }
+
+  // Filtrar trabajos por año y mes seleccionado
   const getWorkOrdersForSelectedMonth = () => {
-    if (!selectedMonth) return workOrdersReport
+    if (!selectedYear || !selectedMonth) return workOrdersReport
     
     const [year, month] = selectedMonth.split('-')
-    return workOrdersReport.filter(order => {
+    console.log("🔍 Filtrando por año:", selectedYear, "y mes:", year, month)
+    
+    const filtered = workOrdersReport.filter(order => {
       const orderDate = new Date(order.date)
-      return orderDate.getFullYear() === parseInt(year) && 
-             (orderDate.getMonth() + 1) === parseInt(month)
+      const orderYear = orderDate.getFullYear()
+      const orderMonth = orderDate.getMonth() + 1
+      
+      console.log("🔍 Orden:", order.id, "Fecha:", orderDate, "Año:", orderYear, "Mes:", orderMonth)
+      
+      return orderYear === parseInt(selectedYear) && orderMonth === parseInt(month)
     })
+    
+    console.log("🔍 Trabajos filtrados:", filtered.length)
+    return filtered
   }
 
   // Obtener trabajos del mes seleccionado
@@ -147,6 +175,21 @@ export function ReportsSection() {
   useEffect(() => {
     loadReportsData()
   }, [])
+
+  // Actualizar mes seleccionado cuando cambie el año
+  useEffect(() => {
+    if (selectedYear && monthlyReports.length > 0) {
+      // Buscar el primer mes disponible del año seleccionado
+      const yearReports = getReportsForYear(parseInt(selectedYear))
+      if (yearReports.length > 0) {
+        const firstMonth = yearReports[0]
+        const monthNumber = getMonthNumber(firstMonth.month)
+        const newMonth = `${selectedYear}-${String(monthNumber).padStart(2, '0')}`
+        setSelectedMonth(newMonth)
+        console.log("🔍 Mes actualizado al cambiar año:", newMonth)
+      }
+    }
+  }, [selectedYear, monthlyReports])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("es-CR", {
@@ -182,7 +225,7 @@ export function ReportsSection() {
 
   // Calcular cambios porcentuales solo si hay reportes disponibles
   const incomeChange = currentReport && previousReport 
-    ? calculatePercentageChange(currentReport.totalIncome, previousReport.totalExpenses)
+    ? calculatePercentageChange(currentReport.totalIncome, previousReport.totalIncome)
     : 0
   const expenseChange = currentReport && previousReport 
     ? calculatePercentageChange(currentReport.totalExpenses, previousReport.totalExpenses)
@@ -231,32 +274,86 @@ export function ReportsSection() {
     )
   }
 
+  // Si no hay datos para el año seleccionado
+  if (selectedYear && getReportsForYear(parseInt(selectedYear)).length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center py-12">
+          <div className="text-gray-400 text-6xl mb-4">📅</div>
+          <h2 className="text-xl font-semibold text-gray-600 mb-2">No hay datos para {selectedYear}</h2>
+          <p className="text-muted-foreground">Selecciona otro año o mes para ver los reportes</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div className="space-y-1 sm:space-y-2">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold">Reportes Financieros</h1>
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold">
+            Reportes Financieros
+            {selectedYear && selectedMonth && (
+              <span className="block text-lg sm:text-xl font-normal text-muted-foreground mt-1">
+                {selectedMonth.split('-')[1]}/{selectedYear}
+              </span>
+            )}
+          </h1>
           <p className="text-sm sm:text-base text-muted-foreground">
             Análisis detallado de ingresos, gastos y ganancias del taller
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
-          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="Seleccionar mes" />
+          {/* Selector de Año */}
+          <Select value={selectedYear} onValueChange={setSelectedYear}>
+            <SelectTrigger className="w-full sm:w-[120px]">
+              <SelectValue placeholder="Año" />
             </SelectTrigger>
             <SelectContent>
-              {monthlyReports.map((report) => (
-                <SelectItem 
-                  key={`${report.year}-${String(getMonthNumber(report.month)).padStart(2, '0')}`}
-                  value={`${report.year}-${String(getMonthNumber(report.month)).padStart(2, '0')}`}
-                >
-                  {report.month} {report.year}
-                </SelectItem>
-              ))}
+              {getUniqueYears().length > 0 ? (
+                getUniqueYears().map((year) => (
+                  <SelectItem key={year} value={year.toString()}>
+                    {year}
+                  </SelectItem>
+                ))
+              ) : (
+                <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                  No hay años disponibles
+                </div>
+              )}
             </SelectContent>
           </Select>
+
+          {/* Selector de Mes */}
+          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+            <SelectTrigger className="w-full sm:w-[140px]">
+              <SelectValue placeholder="Mes" />
+            </SelectTrigger>
+            <SelectContent>
+              {selectedYear ? (
+                getReportsForYear(parseInt(selectedYear)).length > 0 ? (
+                  getReportsForYear(parseInt(selectedYear)).map((report) => (
+                    <SelectItem 
+                      key={`${report.year}-${String(getMonthNumber(report.month)).padStart(2, '0')}`}
+                      value={`${report.year}-${String(getMonthNumber(report.month)).padStart(2, '0')}`}
+                    >
+                      {report.month}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                    No hay datos para {selectedYear}
+                  </div>
+                )
+              ) : (
+                <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                  Selecciona un año primero
+                </div>
+              )}
+            </SelectContent>
+          </Select>
+
           <Button variant="outline" className="w-full sm:w-auto bg-transparent">
             <Download className="h-4 w-4 mr-2" />
             <span className="hidden sm:inline">Exportar Reporte</span>
@@ -272,6 +369,11 @@ export function ReportsSection() {
             <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2">
               <DollarSign className="h-4 w-4 text-green-600" />
               Ingresos Totales
+              {selectedYear && selectedMonth && (
+                <span className="text-xs text-muted-foreground font-normal">
+                  ({selectedMonth.split('-')[1]}/{selectedYear})
+                </span>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3 sm:p-4 lg:p-6 pt-0">
@@ -280,8 +382,14 @@ export function ReportsSection() {
                 {formatCurrency(currentReport.totalIncome)}
               </div>
               <div className={`flex items-center gap-1 text-xs sm:text-sm ${getChangeColor(incomeChange)}`}>
-                {getChangeIcon(incomeChange)}
-                <span>{Math.abs(incomeChange).toFixed(1)}% vs mes anterior</span>
+                {previousReport ? (
+                  <>
+                    {getChangeIcon(incomeChange)}
+                    <span>{Math.abs(incomeChange).toFixed(1)}% vs mes anterior</span>
+                  </>
+                ) : (
+                  <span className="text-gray-500">Primer mes - Sin comparativa</span>
+                )}
               </div>
             </div>
           </CardContent>
@@ -292,6 +400,11 @@ export function ReportsSection() {
             <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2">
               <TrendingDown className="h-4 w-4 text-red-600" />
               Gastos Totales
+              {selectedYear && selectedMonth && (
+                <span className="text-xs text-muted-foreground font-normal">
+                  ({selectedMonth.split('-')[1]}/{selectedYear})
+                </span>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3 sm:p-4 lg:p-6 pt-0">
@@ -300,8 +413,14 @@ export function ReportsSection() {
                 {formatCurrency(currentReport.totalExpenses)}
               </div>
               <div className={`flex items-center gap-1 text-xs sm:text-sm ${getChangeColor(-expenseChange)}`}>
-                {getChangeIcon(-expenseChange)}
-                <span>{Math.abs(expenseChange).toFixed(1)}% vs mes anterior</span>
+                {previousReport ? (
+                  <>
+                    {getChangeIcon(-expenseChange)}
+                    <span>{Math.abs(expenseChange).toFixed(1)}% vs mes anterior</span>
+                  </>
+                ) : (
+                  <span className="text-gray-500">Primer mes - Sin comparativa</span>
+                )}
               </div>
             </div>
           </CardContent>
@@ -312,6 +431,11 @@ export function ReportsSection() {
             <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-blue-600" />
               Ganancia Neta
+              {selectedYear && selectedMonth && (
+                <span className="text-xs text-muted-foreground font-normal">
+                  ({selectedMonth.split('-')[1]}/{selectedYear})
+                </span>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3 sm:p-4 lg:p-6 pt-0">
@@ -320,8 +444,14 @@ export function ReportsSection() {
                 {formatCurrency(currentReport.netProfit)}
               </div>
               <div className={`flex items-center gap-1 text-xs sm:text-sm ${getChangeColor(profitChange)}`}>
-                {getChangeIcon(profitChange)}
-                <span>{Math.abs(profitChange).toFixed(1)}% vs mes anterior</span>
+                {previousReport ? (
+                  <>
+                    {getChangeIcon(profitChange)}
+                    <span>{Math.abs(profitChange).toFixed(1)}% vs mes anterior</span>
+                  </>
+                ) : (
+                  <span className="text-gray-500">Primer mes - Sin comparativa</span>
+                )}
               </div>
             </div>
           </CardContent>
@@ -333,7 +463,11 @@ export function ReportsSection() {
         <CardHeader className="p-4 sm:p-6">
           <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
             <Calendar className="h-5 w-5" />
-            Comparación Mensual
+            Comparación Mensual {selectedYear && selectedMonth && (
+              <span className="text-sm font-normal text-muted-foreground">
+                - {selectedMonth.split('-')[1]}/{selectedYear}
+              </span>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0 sm:p-6 sm:pt-0">
@@ -380,8 +514,12 @@ export function ReportsSection() {
       <Card className="w-full">
         <CardHeader className="p-4 sm:p-6">
           <CardTitle className="text-lg sm:text-xl">
-          Trabajos del Mes - {currentReport.month} {currentReport.year}
-        </CardTitle>
+            Trabajos del Mes {selectedYear && selectedMonth && (
+              <span className="text-sm font-normal text-muted-foreground">
+                - {selectedMonth.split('-')[1]}/{selectedYear}
+              </span>
+            )}
+          </CardTitle>
           <p className="text-sm text-muted-foreground">
             Lista completa de todos los trabajos realizados en el mes seleccionado
           </p>
@@ -403,28 +541,36 @@ export function ReportsSection() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredWorkOrders.map((order) => (
-                    <TableRow key={order.id} className="hover:bg-gray-50">
-                      <TableCell className="px-2 sm:px-4 text-xs sm:text-sm">{formatDate(order.date)}</TableCell>
-                      <TableCell className="font-medium px-2 sm:px-4 text-xs sm:text-sm">{order.id}</TableCell>
-                      <TableCell className="px-2 sm:px-4 text-xs sm:text-sm">{order.licensePlate}</TableCell>
-                      <TableCell className="px-2 sm:px-4 text-xs sm:text-sm hidden sm:table-cell max-w-[120px] truncate">
-                        {order.clientName}
-                      </TableCell>
-                      <TableCell className="px-2 sm:px-4 text-xs sm:text-sm max-w-[150px] sm:max-w-xs truncate">
-                        {order.description}
-                      </TableCell>
-                      <TableCell className="px-2 sm:px-4 text-xs sm:text-sm font-medium text-green-600 hidden md:table-cell">
-                        {formatCurrency(order.income)}
-                      </TableCell>
-                      <TableCell className="px-2 sm:px-4 text-xs sm:text-sm font-medium text-red-600 hidden md:table-cell">
-                        {formatCurrency(order.expenses)}
-                      </TableCell>
-                      <TableCell className="px-2 sm:px-4 text-xs sm:text-sm font-medium text-blue-600">
-                        {formatCurrency(order.profit)}
+                  {filteredWorkOrders.length > 0 ? (
+                    filteredWorkOrders.map((order) => (
+                      <TableRow key={order.id} className="hover:bg-gray-50">
+                        <TableCell className="px-2 sm:px-4 text-xs sm:text-sm">{formatDate(order.date)}</TableCell>
+                        <TableCell className="font-medium px-2 sm:px-4 text-xs sm:text-sm">{order.id}</TableCell>
+                        <TableCell className="px-2 sm:px-4 text-xs sm:text-sm">{order.licensePlate}</TableCell>
+                        <TableCell className="px-2 sm:px-4 text-xs sm:text-sm hidden sm:table-cell max-w-[120px] truncate">
+                          {order.clientName}
+                        </TableCell>
+                        <TableCell className="px-2 sm:px-4 text-xs sm:text-sm max-w-[150px] sm:max-w-xs truncate">
+                          {order.description}
+                        </TableCell>
+                        <TableCell className="px-2 sm:px-4 text-xs sm:text-sm font-medium text-green-600 hidden md:table-cell">
+                          {formatCurrency(order.income)}
+                        </TableCell>
+                        <TableCell className="px-2 sm:px-4 text-xs sm:text-sm font-medium text-red-600 hidden md:table-cell">
+                          {formatCurrency(order.expenses)}
+                        </TableCell>
+                        <TableCell className="px-2 sm:px-4 text-xs sm:text-sm font-medium text-blue-600">
+                          {formatCurrency(order.profit)}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        No hay trabajos para el período seleccionado
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )}
                 </TableBody>
               </Table>
             </div>
@@ -436,7 +582,14 @@ export function ReportsSection() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         <Card>
           <CardHeader className="pb-2 p-3 sm:p-4">
-            <CardTitle className="text-xs sm:text-sm font-medium">Total de Trabajos</CardTitle>
+            <CardTitle className="text-xs sm:text-sm font-medium">
+              Total de Trabajos
+              {selectedYear && selectedMonth && (
+                <span className="text-xs text-muted-foreground font-normal block">
+                  {selectedMonth.split('-')[1]}/{selectedYear}
+                </span>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent className="p-3 sm:p-4 pt-0">
             <div className="text-xl sm:text-2xl font-bold">{filteredWorkOrders.length}</div>
@@ -444,7 +597,14 @@ export function ReportsSection() {
         </Card>
         <Card>
           <CardHeader className="pb-2 p-3 sm:p-4">
-            <CardTitle className="text-xs sm:text-sm font-medium">Ingreso Promedio</CardTitle>
+            <CardTitle className="text-xs sm:text-sm font-medium">
+              Ingreso Promedio
+              {selectedYear && selectedMonth && (
+                <span className="text-xs text-muted-foreground font-normal block">
+                  {selectedMonth.split('-')[1]}/{selectedYear}
+                </span>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent className="p-3 sm:p-4 pt-0">
             <div className="text-xl sm:text-2xl font-bold text-green-600">
@@ -457,7 +617,14 @@ export function ReportsSection() {
         </Card>
         <Card>
           <CardHeader className="pb-2 p-3 sm:p-4">
-            <CardTitle className="text-xs sm:text-sm font-medium">Gasto Promedio</CardTitle>
+            <CardTitle className="text-xs sm:text-sm font-medium">
+              Gasto Promedio
+              {selectedYear && selectedMonth && (
+                <span className="text-xs text-muted-foreground font-normal block">
+                  {selectedMonth.split('-')[1]}/{selectedYear}
+                </span>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent className="p-3 sm:p-4 pt-0">
             <div className="text-xl sm:text-2xl font-bold text-red-600">
@@ -471,7 +638,14 @@ export function ReportsSection() {
         </Card>
         <Card>
           <CardHeader className="pb-2 p-3 sm:p-4">
-            <CardTitle className="text-xs sm:text-sm font-medium">Margen Promedio</CardTitle>
+            <CardTitle className="text-xs sm:text-sm font-medium">
+              Margen Promedio
+              {selectedYear && selectedMonth && (
+                <span className="text-xs text-muted-foreground font-normal block">
+                  {selectedMonth.split('-')[1]}/{selectedYear}
+                </span>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent className="p-3 sm:p-4 pt-0">
             <div className="text-xl sm:text-2xl font-bold text-blue-600">
