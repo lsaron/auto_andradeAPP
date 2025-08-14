@@ -41,6 +41,22 @@ type VehicleOption = {
   label: string
 }
 
+// Opciones para los filtros de fecha
+const monthOptions = [
+  { value: "01", label: "Enero" },
+  { value: "02", label: "Febrero" },
+  { value: "03", label: "Marzo" },
+  { value: "04", label: "Abril" },
+  { value: "05", label: "Mayo" },
+  { value: "06", label: "Junio" },
+  { value: "07", label: "Julio" },
+  { value: "08", label: "Agosto" },
+  { value: "09", label: "Septiembre" },
+  { value: "10", label: "Octubre" },
+  { value: "11", label: "Noviembre" },
+  { value: "12", label: "Diciembre" },
+]
+
 export function WorkOrdersSection() {
   // Pagination and loading states
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([])
@@ -58,8 +74,10 @@ export function WorkOrdersSection() {
 
   // Date filter functionality
   const [dateFilter, setDateFilter] = useState({
-    startDate: "",
-    endDate: "",
+    startMonth: "",
+    startYear: "",
+    endMonth: "",
+    endYear: "",
   })
   const [isDateFiltering, setIsDateFiltering] = useState(false)
 
@@ -75,6 +93,7 @@ export function WorkOrdersSection() {
     description: "",
     totalCost: "",
     expenses: [] as { id: string; item: string; amount: string }[],
+    applyWork: false, // Campo para controlar si se aplica IVA
   })
 
   // Add after the existing modal states
@@ -96,6 +115,42 @@ export function WorkOrdersSection() {
   const [selectedMechanics, setSelectedMechanics] = useState<AsignacionMecanico[]>([])
   const [isLoadingMechanics, setIsLoadingMechanics] = useState(false)
   const [mechanicsError, setMechanicsError] = useState<string | null>(null)
+
+  // Estado para opciones de años dinámicas
+  const [yearOptions, setYearOptions] = useState<Array<{ value: string; label: string }>>([])
+
+  // Función para generar opciones de años basándose en los datos reales
+  const generateYearOptions = useCallback((orders: WorkOrder[]) => {
+    if (orders.length === 0) return []
+
+    // Extraer todos los años únicos de las fechas de los trabajos
+    const years = new Set<string>()
+    
+    orders.forEach(order => {
+      if (order.date) {
+        try {
+          const year = new Date(order.date).getFullYear().toString()
+          if (year && year !== 'NaN') {
+            years.add(year)
+          }
+        } catch (error) {
+          console.warn(`Error parsing date for order ${order.id}:`, order.date)
+        }
+      }
+    })
+
+    // Convertir a array y ordenar de mayor a menor (más reciente primero)
+    const sortedYears = Array.from(years).sort((a, b) => parseInt(b) - parseInt(a))
+    
+    // Crear opciones para los selects
+    const yearOptions = sortedYears.map(year => ({
+      value: year,
+      label: year
+    }))
+
+    console.log("🔍 Años disponibles generados:", yearOptions)
+    return yearOptions
+  }, [])
 
   // Add function to handle expenses
   const addExpense = () => {
@@ -229,18 +284,18 @@ export function WorkOrdersSection() {
 
   // Update the handleAddWorkOrder function
   const handleAddWorkOrder = async () => {
-    if (newOrder.licensePlate && newOrder.description && newOrder.clientName && newOrder.totalCost) {
+    if (newOrder.licensePlate && newOrder.description && newOrder.clientName) {
       try {
         const totalExpenses = calculateTotalExpenses()
-        const totalCost = Number.parseFloat(newOrder.totalCost) || 0
+        const totalCost = newOrder.totalCost ? Number.parseFloat(newOrder.totalCost) : null
 
         // Log de los datos que se van a enviar
         const datosTrabajo = {
           matricula_carro: newOrder.licensePlate,
           descripcion: newOrder.description,
           fecha: new Date().toISOString().split("T")[0],
-          costo: totalCost,
-          aplica_iva: true,
+          costo: totalCost || 0, // Si no hay costo total, enviar 0
+          aplica_iva: newOrder.applyWork, // Solo aplicar IVA si está seleccionado
           detalle_gastos: newOrder.expenses.map(expense => ({
             descripcion: expense.item,
             monto: Number.parseFloat(expense.amount) || 0
@@ -333,10 +388,10 @@ export function WorkOrdersSection() {
 
   // Add after handleAddWorkOrder function
   const handleSaveEditOrder = async () => {
-    if (editOrder.description && editOrder.totalCost) {
+    if (editOrder.description) {
       try {
         const totalExpenses = calculateEditTotalExpenses()
-        const totalCost = Number.parseFloat(editOrder.totalCost) || 0
+        const totalCost = editOrder.totalCost ? Number.parseFloat(editOrder.totalCost) : null
 
         // Extract the numeric ID from the work order ID (e.g., "WO-001" -> 1)
         const workOrderId = parseInt(editOrder.id.replace("WO-", ""))
@@ -350,8 +405,8 @@ export function WorkOrdersSection() {
             matricula_carro: "", // Keep existing
             descripcion: editOrder.description,
             fecha: new Date().toISOString().split("T")[0],
-            costo: totalCost,
-            aplica_iva: true,
+            costo: totalCost || 0, // Si no hay costo total, enviar 0
+            aplica_iva: editOrder.applyWork || false, // Solo aplicar IVA si está seleccionado
             detalle_gastos: editOrder.expenses.map(expense => ({
               descripcion: expense.item,
               monto: Number.parseFloat(expense.amount) || 0
@@ -364,6 +419,17 @@ export function WorkOrdersSection() {
           throw new Error(errorData.detail || "Error al actualizar trabajo")
         }
 
+        // Si hay mecánicos seleccionados, asignarlos al trabajo
+        if (selectedMechanics.length > 0) {
+          try {
+            const asignacionResponse = await mecanicosApi.assignToWork(workOrderId, selectedMechanics)
+            console.log("✅ Mecánicos asignados al trabajo:", asignacionResponse)
+          } catch (error) {
+            console.error("❌ Error al asignar mecánicos:", error)
+            // No fallar si no se pueden asignar mecánicos, solo loguear el error
+          }
+        }
+
         // Reload work orders after updating
         await loadWorkOrders(1, true)
 
@@ -372,7 +438,9 @@ export function WorkOrdersSection() {
           description: "",
           totalCost: "",
           expenses: [],
+          applyWork: false,
         })
+        setSelectedMechanics([]) // Reset selected mechanics
         setIsEditModalOpen(false)
       } catch (error: any) {
         console.error("Error al actualizar trabajo:", error)
@@ -458,6 +526,10 @@ export function WorkOrdersSection() {
         if (reset) {
           setWorkOrders(transformedOrders)
           setFilteredWorkOrders(transformedOrders)
+          
+          // Generar opciones de años basándose en los datos reales
+          const dynamicYearOptions = generateYearOptions(transformedOrders)
+          setYearOptions(dynamicYearOptions)
         } else {
           setWorkOrders((prev) => [...prev, ...transformedOrders])
           setFilteredWorkOrders((prev) => [...prev, ...transformedOrders])
@@ -484,7 +556,7 @@ export function WorkOrdersSection() {
 
   // Search and filter functionality - updated to include date filtering
   const handleSearchAndFilter = useCallback(
-    async (query: string, dateRange: { startDate: string; endDate: string }) => {
+    async (query: string, dateRange: { startMonth: string; startYear: string; endMonth: string; endYear: string }) => {
       let filtered = workOrders
 
       // Apply search filter
@@ -499,14 +571,25 @@ export function WorkOrdersSection() {
       }
 
       // Apply date filter
-      if (dateRange.startDate || dateRange.endDate) {
+      if (dateRange.startMonth || dateRange.startYear || dateRange.endMonth || dateRange.endYear) {
         filtered = filtered.filter((order) => {
           const orderDate = new Date(order.date)
-          const startDate = dateRange.startDate ? new Date(dateRange.startDate) : null
-          const endDate = dateRange.endDate ? new Date(dateRange.endDate) : null
-
-          if (startDate && orderDate < startDate) return false
-          if (endDate && orderDate > endDate) return false
+          const orderMonth = (orderDate.getMonth() + 1).toString().padStart(2, '0')
+          const orderYear = orderDate.getFullYear().toString()
+          
+          // Check if order is within the selected month/year range
+          if (dateRange.startMonth && dateRange.startYear) {
+            if (orderYear < dateRange.startYear || (orderYear === dateRange.startYear && orderMonth < dateRange.startMonth)) {
+              return false
+            }
+          }
+          
+          if (dateRange.endMonth && dateRange.endYear) {
+            if (orderYear > dateRange.endYear || (orderYear === dateRange.endYear && orderMonth > dateRange.endMonth)) {
+              return false
+            }
+          }
+          
           return true
         })
       }
@@ -521,7 +604,7 @@ export function WorkOrdersSection() {
 
   const handleSearch = useCallback(
     async (query: string) => {
-      if (!query.trim() && !dateFilter.startDate && !dateFilter.endDate) {
+      if (!query.trim() && !dateFilter.startMonth && !dateFilter.startYear && !dateFilter.endMonth && !dateFilter.endYear) {
         setFilteredWorkOrders(workOrders)
         setHasMore(page < Math.ceil(totalWorkOrders / 10))
         setIsSearching(false)
@@ -537,8 +620,8 @@ export function WorkOrdersSection() {
   )
 
   const handleDateFilter = useCallback(
-    async (dateRange: { startDate: string; endDate: string }) => {
-      if (!dateRange.startDate && !dateRange.endDate && !searchQuery.trim()) {
+    async (dateRange: { startMonth: string; startYear: string; endMonth: string; endYear: string }) => {
+      if (!dateRange.startMonth && !dateRange.startYear && !dateRange.endMonth && !dateRange.endYear && !searchQuery.trim()) {
         setFilteredWorkOrders(workOrders)
         setHasMore(page < Math.ceil(totalWorkOrders / 10))
         setIsDateFiltering(false)
@@ -554,7 +637,7 @@ export function WorkOrdersSection() {
 
   const clearSearch = () => {
     setSearchQuery("")
-    setDateFilter({ startDate: "", endDate: "" })
+    setDateFilter({ startMonth: "", startYear: "", endMonth: "", endYear: "" })
     setIsSearching(false)
     setIsDateFiltering(false)
     setFilteredWorkOrders(workOrders)
@@ -665,11 +748,30 @@ export function WorkOrdersSection() {
         ]
       }
 
+      // Obtener los mecánicos asignados al trabajo
+      try {
+        const mechanicsResponse = await fetch(`http://localhost:8000/api/mecanicos/trabajos/${workOrderId}/asignados`)
+        if (mechanicsResponse.ok) {
+          const mechanicsData = await mechanicsResponse.json()
+          const assignedMechanics = mechanicsData.map((mechanic: any) => ({
+            id_mecanico: mechanic.id_mecanico,
+            porcentaje_comision: mechanic.porcentaje_comision || 2.0
+          }))
+          setSelectedMechanics(assignedMechanics)
+        } else {
+          setSelectedMechanics([])
+        }
+      } catch (error) {
+        console.warn("No se pudieron obtener los mecánicos asignados:", error)
+        setSelectedMechanics([])
+      }
+
       setEditOrder({
         id: order.id,
         description: order.description,
         totalCost: order.totalCost.toString(),
         expenses: expensesToEdit,
+        applyWork: false, // Por defecto no aplicar IVA en edición
       })
       setIsEditModalOpen(true)
     } catch (error) {
@@ -683,7 +785,9 @@ export function WorkOrdersSection() {
           { id: "1", item: "", amount: "" },
           { id: "2", item: "", amount: "" }
         ],
+        applyWork: false, // Por defecto no aplicar IVA en edición
       })
+      setSelectedMechanics([])
       setIsEditModalOpen(true)
     }
   }
@@ -925,7 +1029,7 @@ export function WorkOrdersSection() {
                       <div key={expense.id} className="flex gap-2 items-start">
                         <div className="flex-1">
                           <Input
-                            placeholder="Ej: Aceite Repsol 5W-30"
+                            placeholder="Gasto o Material"
                             value={expense.item}
                             onChange={(e) => updateExpense(expense.id, "item", e.target.value)}
                             className="text-sm"
@@ -933,7 +1037,8 @@ export function WorkOrdersSection() {
                         </div>
                         <div className="w-32">
                           <Input
-                            type="number"
+                            type="text"
+                            inputMode="decimal"
                             placeholder="₡ 0.00"
                             value={expense.amount}
                             onChange={(e) => updateExpense(expense.id, "amount", e.target.value)}
@@ -975,19 +1080,23 @@ export function WorkOrdersSection() {
               {/* Total Cost */}
               <div className="space-y-2">
                 <Label htmlFor="totalCost" className="text-sm font-medium">
-                  Costo Total Cobrado al Cliente *
+                  Costo Total Cobrado al Cliente
                 </Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm text-gray-500">₡</span>
                   <Input
                     id="totalCost"
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     value={newOrder.totalCost}
                     onChange={(e) => setNewOrder({ ...newOrder, totalCost: e.target.value })}
-                    placeholder="0.00"
+                    placeholder="0.00 (opcional para proyectos en curso)"
                     className="pl-8"
                   />
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Deja vacío si es un proyecto en curso que acumulará gastos gradualmente
+                </p>
 
                 {/* Profit Calculation Display */}
                 {newOrder.totalCost && (
@@ -1019,9 +1128,9 @@ export function WorkOrdersSection() {
                 )}
               </div>
 
-              {/* Apply Work Status - Moved to end */}
+              {/* Apply IVA Option */}
               <div className="space-y-3">
-                <Label className="text-sm font-medium">Estado del Trabajo</Label>
+                <Label className="text-sm font-medium">Opciones de Facturación</Label>
                 <div className="flex items-center space-x-2">
                   <input
                     type="checkbox"
@@ -1031,7 +1140,7 @@ export function WorkOrdersSection() {
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
                   <Label htmlFor="applyWork" className="text-sm">
-                    Aplicar iva (*13%)
+                    Aplicar IVA (*13%)
                   </Label>
                 </div>
               </div>
@@ -1087,7 +1196,7 @@ export function WorkOrdersSection() {
               <Button
                 onClick={handleAddWorkOrder}
                 className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
-                disabled={!newOrder.licensePlate || !newOrder.description || !newOrder.totalCost}
+                disabled={!newOrder.licensePlate || !newOrder.description}
               >
                 Crear Orden de Trabajo
               </Button>
@@ -1096,7 +1205,13 @@ export function WorkOrdersSection() {
         </Dialog>
 
         {/* Edit Order Modal */}
-        <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <Dialog open={isEditModalOpen} onOpenChange={(open) => {
+          setIsEditModalOpen(open)
+          if (open) {
+            // Cargar mecánicos cuando se abre el modal
+            loadMechanics()
+          }
+        }}>
           <DialogContent className="sm:max-w-[600px] mx-4 sm:mx-0 max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-900">
             <DialogHeader>
               <DialogTitle className="text-lg sm:text-xl">Editar Orden de Trabajo - {editOrder.id}</DialogTitle>
@@ -1139,7 +1254,7 @@ export function WorkOrdersSection() {
                       <div key={expense.id} className="flex gap-2 items-start">
                         <div className="flex-1">
                           <Input
-                            placeholder="Ej: Aceite Repsol 5W-30"
+                            placeholder="Gasto o Material"
                             value={expense.item}
                             onChange={(e) => updateEditExpense(expense.id, "item", e.target.value)}
                             className="text-sm"
@@ -1147,7 +1262,8 @@ export function WorkOrdersSection() {
                         </div>
                         <div className="w-32">
                           <Input
-                            type="number"
+                            type="text"
+                            inputMode="decimal"
                             placeholder="₡ 0.00"
                             value={expense.amount}
                             onChange={(e) => updateEditExpense(expense.id, "amount", e.target.value)}
@@ -1189,19 +1305,23 @@ export function WorkOrdersSection() {
               {/* Total Cost */}
               <div className="space-y-2">
                 <Label htmlFor="editTotalCost" className="text-sm font-medium">
-                  Costo Total Cobrado al Cliente *
+                  Costo Total Cobrado al Cliente
                 </Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm text-gray-500">₡</span>
                   <Input
                     id="editTotalCost"
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     value={editOrder.totalCost}
                     onChange={(e) => setEditOrder({ ...editOrder, totalCost: e.target.value })}
-                    placeholder="0.00"
+                    placeholder="0.00 (opcional para proyectos en curso)"
                     className="pl-8"
                   />
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Deja vacío si es un proyecto en curso que acumulará gastos gradualmente
+                </p>
 
                 {/* Profit Calculation Display */}
                 {editOrder.totalCost && (
@@ -1232,6 +1352,90 @@ export function WorkOrdersSection() {
                   </div>
                 )}
               </div>
+
+              {/* Mechanics Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Mecánicos Asignados</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Puedes agregar más mecánicos al proyecto
+                  </p>
+                </div>
+
+                {/* Mechanics Selection */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Seleccionar Mecánicos</Label>
+                  {isLoadingMechanics ? (
+                    <div className="flex items-center justify-center py-4">
+                      <LoadingSpinner size="sm" />
+                      <span className="ml-2 text-sm text-muted-foreground">Cargando mecánicos...</span>
+                    </div>
+                  ) : mechanicsError ? (
+                    <div className="text-red-600 text-sm">{mechanicsError}</div>
+                  ) : (
+                    <Select
+                      isMulti
+                      options={mechanics.map((mechanic) => ({
+                        value: mechanic.id,
+                        label: mechanic.name,
+                      }))}
+                      value={selectedMechanics.map((mechanic) => (
+                        {
+                          value: mechanic.id_mecanico.toString(),
+                          label: mechanics.find(m => m.id === mechanic.id_mecanico.toString())?.name || 'Mecánico',
+                        }
+                      ))}
+                      onChange={(selectedOptions) => {
+                        const newMechanics = selectedOptions?.map((option) => ({
+                          id_mecanico: parseInt(option.value),
+                          porcentaje_comision: 2.0, // Porcentaje por defecto
+                        })) || []
+                        setSelectedMechanics(newMechanics)
+                      }}
+                      placeholder="Selecciona los mecánicos..."
+                      className="text-sm"
+                      classNamePrefix="react-select"
+                    />
+                  )}
+                </div>
+
+                {/* Current Mechanics Display */}
+                {selectedMechanics.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Mecánicos Actuales</Label>
+                    <div className="space-y-2 max-h-32 overflow-y-auto border rounded-md p-3 bg-gray-50">
+                      {selectedMechanics.map((mechanic, index) => {
+                        const mechanicInfo = mechanics.find(m => m.id === mechanic.id_mecanico.toString())
+                        return (
+                          <div key={index} className="flex items-center justify-between text-sm">
+                            <span className="font-medium">{mechanicInfo?.name || 'Mecánico'}</span>
+                            <span className="text-muted-foreground">
+                              {mechanic.porcentaje_comision}% - Comisión calculada automáticamente
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Apply IVA Option */}
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Opciones de Facturación</Label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="editApplyWork"
+                    checked={editOrder.applyWork}
+                    onChange={(e) => setEditOrder({ ...editOrder, applyWork: e.target.checked })}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <Label htmlFor="editApplyWork" className="text-sm">
+                    Aplicar IVA (*13%)
+                  </Label>
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4 border-t">
@@ -1241,7 +1445,7 @@ export function WorkOrdersSection() {
               <Button
                 onClick={handleSaveEditOrder}
                 className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
-                disabled={!editOrder.description || !editOrder.totalCost}
+                disabled={!editOrder.description}
               >
                 Guardar Cambios
               </Button>
@@ -1275,7 +1479,7 @@ export function WorkOrdersSection() {
                   </Button>
                 )}
               </div>
-              {(searchQuery || dateFilter.startDate || dateFilter.endDate) && (
+              {(searchQuery || dateFilter.startMonth || dateFilter.startYear || dateFilter.endMonth || dateFilter.endYear) && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   {isSearching || isDateFiltering ? (
                     <>
@@ -1297,34 +1501,64 @@ export function WorkOrdersSection() {
               <Label className="text-sm font-medium whitespace-nowrap">Filtrar por fecha:</Label>
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 flex-1">
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-start sm:items-center">
-                  <Label htmlFor="startDate" className="text-xs text-muted-foreground whitespace-nowrap">
+                  <Label className="text-xs text-muted-foreground whitespace-nowrap">
                     Desde:
                   </Label>
-                  <Input
-                    id="startDate"
-                    type="date"
-                    value={dateFilter.startDate}
-                    onChange={(e) => setDateFilter({ ...dateFilter, startDate: e.target.value })}
-                    className="w-full sm:w-auto text-sm"
-                  />
+                  <div className="flex gap-2">
+                    <Select
+                      placeholder="Mes"
+                      options={monthOptions}
+                      value={monthOptions.find(option => option.value === dateFilter.startMonth)}
+                      onChange={(option) => setDateFilter({ ...dateFilter, startMonth: option?.value || "" })}
+                      className="w-24 text-sm"
+                      classNamePrefix="react-select"
+                      isClearable
+                    />
+                    <Select
+                      placeholder="Año"
+                      options={yearOptions}
+                      value={yearOptions.find(option => option.value === dateFilter.startYear)}
+                      onChange={(option) => setDateFilter({ ...dateFilter, startYear: option?.value || "" })}
+                      className="w-20 text-sm"
+                      classNamePrefix="react-select"
+                      isClearable
+                      isLoading={yearOptions.length === 0}
+                      noOptionsMessage={() => "Cargando años..."}
+                    />
+                  </div>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-start sm:items-center">
-                  <Label htmlFor="endDate" className="text-xs text-muted-foreground whitespace-nowrap">
+                  <Label className="text-xs text-muted-foreground whitespace-nowrap">
                     Hasta:
                   </Label>
-                  <Input
-                    id="endDate"
-                    type="date"
-                    value={dateFilter.endDate}
-                    onChange={(e) => setDateFilter({ ...dateFilter, endDate: e.target.value })}
-                    className="w-full sm:w-auto text-sm"
-                  />
+                  <div className="flex gap-2">
+                    <Select
+                      placeholder="Mes"
+                      options={monthOptions}
+                      value={monthOptions.find(option => option.value === dateFilter.endMonth)}
+                      onChange={(option) => setDateFilter({ ...dateFilter, endMonth: option?.value || "" })}
+                      className="w-24 text-sm"
+                      classNamePrefix="react-select"
+                      isClearable
+                    />
+                    <Select
+                      placeholder="Año"
+                      options={yearOptions}
+                      value={dateFilter.endYear ? yearOptions.find(option => option.value === dateFilter.endYear) : null}
+                      onChange={(option) => setDateFilter({ ...dateFilter, endYear: option?.value || "" })}
+                      className="w-20 text-sm"
+                      classNamePrefix="react-select"
+                      isClearable
+                      isLoading={yearOptions.length === 0}
+                      noOptionsMessage={() => "Cargando años..."}
+                    />
+                  </div>
                 </div>
-                {(dateFilter.startDate || dateFilter.endDate) && (
+                {(dateFilter.startMonth || dateFilter.startYear || dateFilter.endMonth || dateFilter.endYear) && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setDateFilter({ startDate: "", endDate: "" })}
+                    onClick={() => setDateFilter({ startMonth: "", startYear: "", endMonth: "", endYear: "" })}
                     className="bg-transparent text-xs"
                   >
                     <X className="h-3 w-3 mr-1" />
@@ -1332,24 +1566,31 @@ export function WorkOrdersSection() {
                   </Button>
                 )}
               </div>
+              
+              {/* Información sobre años dinámicos */}
+              {yearOptions.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  💡 Los años disponibles se generan automáticamente desde los datos de la base de datos
+                </p>
+              )}
             </div>
 
             {/* Search and Filter Results Summary */}
-            {(searchQuery || dateFilter.startDate || dateFilter.endDate) && !(isSearching || isDateFiltering) && (
+            {(searchQuery || dateFilter.startMonth || dateFilter.startYear || dateFilter.endMonth || dateFilter.endYear) && !(isSearching || isDateFiltering) && (
               <div className="flex flex-wrap gap-2">
                 {searchQuery && (
                   <Badge variant="outline" className="text-xs">
                     Búsqueda: "{searchQuery}"
                   </Badge>
                 )}
-                {dateFilter.startDate && (
+                {dateFilter.startMonth && dateFilter.startYear && (
                   <Badge variant="outline" className="text-xs">
-                    Desde: {new Date(dateFilter.startDate).toLocaleDateString("es-MX")}
+                    Desde: {monthOptions.find(m => m.value === dateFilter.startMonth)?.label} {dateFilter.startYear}
                   </Badge>
                 )}
-                {dateFilter.endDate && (
+                {dateFilter.endMonth && dateFilter.endYear && (
                   <Badge variant="outline" className="text-xs">
-                    Hasta: {new Date(dateFilter.endDate).toLocaleDateString("es-MX")}
+                    Hasta: {monthOptions.find(m => m.value === dateFilter.endMonth)?.label} {dateFilter.endYear}
                   </Badge>
                 )}
                 {filteredWorkOrders.length === 0 && (
@@ -1507,7 +1748,7 @@ export function WorkOrdersSection() {
                 ))}
 
                 {/* Load More Button - Only show when not searching or filtering */}
-                {!searchQuery && !dateFilter.startDate && !dateFilter.endDate && hasMore && (
+                {!searchQuery && !dateFilter.startMonth && !dateFilter.startYear && !dateFilter.endMonth && !dateFilter.endYear && hasMore && (
                   <div className="flex justify-center pt-4">
                     <Button
                       onClick={handleLoadMore}
@@ -1531,14 +1772,14 @@ export function WorkOrdersSection() {
                 )}
 
                 {/* End of list message */}
-                {!searchQuery && !dateFilter.startDate && !dateFilter.endDate && !hasMore && workOrders.length > 0 && (
+                {!searchQuery && !dateFilter.startMonth && !dateFilter.startYear && !dateFilter.endMonth && !dateFilter.endYear && !hasMore && workOrders.length > 0 && (
                   <div className="text-center py-4 text-sm text-muted-foreground">
                     ✅ Se han cargado todas las {totalWorkOrders} órdenes de trabajo
                   </div>
                 )}
 
                 {/* Search/Filter results empty state */}
-                {(searchQuery || dateFilter.startDate || dateFilter.endDate) &&
+                {(searchQuery || dateFilter.startMonth || dateFilter.startYear || dateFilter.endMonth || dateFilter.endYear) &&
                   !(isSearching || isDateFiltering) &&
                   filteredWorkOrders.length === 0 && (
                     <div className="text-center py-12">
@@ -1555,8 +1796,10 @@ export function WorkOrdersSection() {
 
                 {/* Empty state for no orders at all */}
                 {!searchQuery &&
-                  !dateFilter.startDate &&
-                  !dateFilter.endDate &&
+                  !dateFilter.startMonth &&
+                  !dateFilter.startYear &&
+                  !dateFilter.endMonth &&
+                  !dateFilter.endYear &&
                   workOrders.length === 0 &&
                   !loading && (
                     <div className="text-center py-12">
