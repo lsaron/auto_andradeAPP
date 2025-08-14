@@ -10,8 +10,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { ErrorMessage } from "@/components/ui/error-message"
-import { Edit, Eye, Plus, Trash2, Search, X, Calendar, Car, FileText, Printer, Coins } from "lucide-react"
+import { Edit, Eye, Plus, Trash2, Search, X, Calendar, Car, FileText, Printer, Coins, Users, Wrench } from "lucide-react"
 import Select from "react-select"
+import { mecanicosApi } from "@/lib/api-client"
+import type { Mechanic, AsignacionMecanico } from "@/lib/types"
 
 interface WorkOrder {
   id: string
@@ -89,6 +91,12 @@ export function WorkOrdersSection() {
     applyWork: false, // Add this new field
   })
 
+  // Estado para mecánicos
+  const [mechanics, setMechanics] = useState<Mechanic[]>([])
+  const [selectedMechanics, setSelectedMechanics] = useState<AsignacionMecanico[]>([])
+  const [isLoadingMechanics, setIsLoadingMechanics] = useState(false)
+  const [mechanicsError, setMechanicsError] = useState<string | null>(null)
+
   // Add function to handle expenses
   const addExpense = () => {
     const newExpense = {
@@ -157,6 +165,68 @@ export function WorkOrdersSection() {
     }, 0)
   }
 
+  // Funciones para mecánicos
+  const loadMechanics = useCallback(async () => {
+    try {
+      setIsLoadingMechanics(true)
+      setMechanicsError(null)
+      const mechanicsData = await mecanicosApi.getAll()
+      
+      console.log("🔍 Datos de la API:", mechanicsData)
+      
+      // Mapear los datos de la API a la interfaz Mechanic
+      const mappedMechanics = mechanicsData.map((mecanico: any) => ({
+        id: mecanico.id.toString(),
+        name: mecanico.nombre,
+        mechanic_id: `MC-${mecanico.id}`,
+        jobs_completed: 0,
+        total_commission: 0,
+        total_profit: 0,
+        hire_date: mecanico.fecha_contratacion || new Date().toISOString(),
+        created_at: mecanico.created_at || new Date().toISOString(),
+        updated_at: mecanico.updated_at || new Date().toISOString()
+      }))
+      
+      console.log("🔍 Mecánicos mapeados:", mappedMechanics)
+      
+      setMechanics(mappedMechanics)
+    } catch (error) {
+      setMechanicsError('Error al cargar mecánicos')
+      console.error('Error loading mechanics:', error)
+    } finally {
+      setIsLoadingMechanics(false)
+    }
+  }, [])
+
+  const handleMechanicSelection = useCallback((selectedOptions: any) => {
+    if (!selectedOptions) {
+      setSelectedMechanics([])
+      return
+    }
+    
+    const selectedMechs = selectedOptions.map((option: any) => ({
+      id_mecanico: parseInt(option.value),
+      porcentaje_comision: 2.0 // 2% fijo como float
+    }))
+    setSelectedMechanics(selectedMechs)
+  }, [])
+
+  const calculateCommissionPreview = useCallback(() => {
+    if (selectedMechanics.length === 0) return 0
+    
+    const totalCost = Number.parseFloat(newOrder.totalCost) || 0
+    const totalExpenses = calculateTotalExpenses()
+    const ganancia = totalCost - totalExpenses
+    
+    if (ganancia <= 0) return 0
+    
+    // 2% de comisión dividido entre los mecánicos seleccionados
+    const comisionTotal = ganancia * 0.02
+    const comisionPorMecanico = comisionTotal / selectedMechanics.length
+    
+    return comisionPorMecanico
+  }, [selectedMechanics, newOrder.totalCost, calculateTotalExpenses])
+
   // Update the handleAddWorkOrder function
   const handleAddWorkOrder = async () => {
     if (newOrder.licensePlate && newOrder.description && newOrder.clientName && newOrder.totalCost) {
@@ -164,22 +234,27 @@ export function WorkOrdersSection() {
         const totalExpenses = calculateTotalExpenses()
         const totalCost = Number.parseFloat(newOrder.totalCost) || 0
 
+        // Log de los datos que se van a enviar
+        const datosTrabajo = {
+          matricula_carro: newOrder.licensePlate,
+          descripcion: newOrder.description,
+          fecha: new Date().toISOString().split("T")[0],
+          costo: totalCost,
+          aplica_iva: true,
+          detalle_gastos: newOrder.expenses.map(expense => ({
+            descripcion: expense.item,
+            monto: Number.parseFloat(expense.amount) || 0
+          }))
+        }
+        console.log("🔍 Datos que se envían a la API:", datosTrabajo)
+
+        // Crear el trabajo primero
         const response = await fetch("http://localhost:8000/api/trabajos/", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            matricula_carro: newOrder.licensePlate,
-            descripcion: newOrder.description,
-            fecha: new Date().toISOString().split("T")[0],
-            costo: totalCost,
-            aplica_iva: true,
-            detalle_gastos: newOrder.expenses.map(expense => ({
-              descripcion: expense.item,
-              monto: Number.parseFloat(expense.amount) || 0
-            }))
-          }),
+          body: JSON.stringify(datosTrabajo),
         })
 
         if (!response.ok) {
@@ -187,9 +262,58 @@ export function WorkOrdersSection() {
           throw new Error(errorData.detail || "Error al crear trabajo")
         }
 
+        const trabajoCreado = await response.json()
+        console.log("🔍 Respuesta completa de la API:", trabajoCreado)
+        const trabajoId = trabajoCreado.id
+        console.log("🔍 ID extraído:", trabajoId)
+        console.log("🔍 Tipo de ID:", typeof trabajoId)
+
+        // Validar que el ID sea válido
+        if (!trabajoId || trabajoId === undefined || trabajoId === null) {
+          console.error("❌ ERROR: ID del trabajo no válido:", trabajoId)
+          throw new Error("No se pudo obtener el ID del trabajo creado")
+        }
+
+        // Si hay mecánicos seleccionados, asignarlos al trabajo y calcular comisiones
+        if (selectedMechanics.length > 0) {
+          try {
+            console.log("🚨🚨🚨 FRONTEND: Intentando asignar mecánicos")
+            console.log("🔍 Intentando asignar mecánicos:", selectedMechanics)
+            console.log("🔍 ID del trabajo creado:", trabajoId)
+            console.log("🔍 URL de la API:", `http://localhost:8000/api/mecanicos/trabajos/${trabajoId}/asignar`)
+            
+            // Log detallado de los datos que se envían
+            console.log("🔍 Datos completos de selectedMechanics:", JSON.stringify(selectedMechanics, null, 2))
+            console.log("🔍 Primer mecánico:", selectedMechanics[0])
+            console.log("🔍 Tipo de selectedMechanics:", typeof selectedMechanics)
+            console.log("🔍 Es un array:", Array.isArray(selectedMechanics))
+            
+            // Log adicional para debuggear
+            console.log("🔍 Estructura del primer mecánico:")
+            for (const [key, value] of Object.entries(selectedMechanics[0])) {
+              console.log(`  - ${key}: ${value} (tipo: ${typeof value})`)
+            }
+            
+            const asignacionResponse = await mecanicosApi.assignToWork(trabajoId, selectedMechanics)
+            console.log("✅ Respuesta de asignación:", asignacionResponse)
+            console.log(`✅ Mecánicos asignados al trabajo ${trabajoId}`)
+          } catch (error) {
+            console.error("❌ Error al asignar mecánicos:", error)
+            console.error("❌ Detalles del error:", {
+              trabajoId,
+              selectedMechanics,
+              error: error instanceof Error ? error.message : String(error)
+            })
+            // No fallar si no se pueden asignar mecánicos, solo loguear el error
+          }
+        } else {
+          console.log("ℹ️ No hay mecánicos seleccionados para asignar")
+        }
+
         // Reload work orders after adding
         await loadWorkOrders(1, true)
 
+        // Reset form
         setNewOrder({
           licensePlate: "",
           description: "",
@@ -198,6 +322,7 @@ export function WorkOrdersSection() {
           expenses: [],
           applyWork: false,
         })
+        setSelectedMechanics([]) // Reset selected mechanics
         setIsNewOrderModalOpen(false)
       } catch (error: any) {
         console.error("Error al crear trabajo:", error)
@@ -440,6 +565,7 @@ export function WorkOrdersSection() {
   useEffect(() => {
     loadWorkOrders(1, true)
     loadAvailableData()
+    loadMechanics() // Load mechanics on mount
   }, []) // Remove loadWorkOrders from dependencies to prevent infinite loop
 
   // Search effect with debounce - updated to handle date filtering
@@ -691,6 +817,92 @@ export function WorkOrdersSection() {
                 />
               </div>
 
+              {/* Mecánicos Asignados */}
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">
+                  Mecánicos Asignados al Trabajo
+                </Label>
+                
+                {isLoadingMechanics ? (
+                  <div className="flex items-center justify-center py-4">
+                    <LoadingSpinner size="sm" />
+                    <span className="ml-2 text-sm text-muted-foreground">Cargando mecánicos...</span>
+                  </div>
+                ) : mechanicsError ? (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                    <p className="text-sm text-red-600">{mechanicsError}</p>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={loadMechanics}
+                      className="mt-2"
+                    >
+                      Reintentar
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <Select
+                      isMulti
+                      options={mechanics.map(mechanic => ({
+                        value: mechanic.id,
+                        label: `${mechanic.name} (${mechanic.mechanic_id})`
+                      }))}
+                      onChange={handleMechanicSelection}
+                      placeholder="Seleccionar mecánicos..."
+                      isClearable
+                      className="w-full"
+                      styles={{
+                        control: (base) => ({
+                          ...base,
+                          minHeight: "42px",
+                          fontSize: "14px",
+                        }),
+                      }}
+                    />
+                    
+                    {selectedMechanics.length > 0 && (
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Users className="h-4 w-4 text-blue-600" />
+                          <span className="text-sm font-medium text-blue-800">
+                            Mecánicos Seleccionados: {selectedMechanics.length}
+                          </span>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          {selectedMechanics.map((selected, index) => {
+                            const mechanic = mechanics.find(m => m.id === selected.id_mecanico.toString())
+                            return (
+                              <div key={index} className="flex items-center justify-between text-sm">
+                                <span className="text-blue-700">
+                                  {mechanic ? `${mechanic.name} (${mechanic.mechanic_id})` : 'Mecánico no encontrado'}
+                                </span>
+                                <Badge variant="outline" className="text-xs">
+                                  {selected.porcentaje_comision}% comisión
+                                </Badge>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        
+                        {newOrder.totalCost && (
+                          <div className="mt-3 pt-2 border-t border-blue-200">
+                            <div className="flex items-center gap-2 text-sm">
+                              <Wrench className="h-4 w-4 text-blue-600" />
+                              <span className="text-blue-700">Comisión por mecánico:</span>
+                              <span className="font-medium text-blue-800">
+                                ₡ {calculateCommissionPreview().toLocaleString("es-CR")}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Expenses Section */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -819,7 +1031,7 @@ export function WorkOrdersSection() {
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
                   <Label htmlFor="applyWork" className="text-sm">
-                    Aplicar trabajo (marcar si el trabajo ha sido completado)
+                    Aplicar iva (*13%)
                   </Label>
                 </div>
               </div>
@@ -862,7 +1074,14 @@ export function WorkOrdersSection() {
             </div>
 
             <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4 border-t">
-              <Button variant="outline" onClick={() => setIsNewOrderModalOpen(false)} className="w-full sm:w-auto">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setIsNewOrderModalOpen(false)
+                  setSelectedMechanics([]) // Reset selected mechanics
+                }} 
+                className="w-full sm:w-auto"
+              >
                 Cancelar
               </Button>
               <Button

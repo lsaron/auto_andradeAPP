@@ -115,12 +115,31 @@ export interface Mechanic {
 
 export interface MechanicCreate {
   name: string
-  mechanic_id: string
 }
 
 export interface MechanicUpdate {
   name?: string
-  mechanic_id?: string
+}
+
+// Nuevos tipos para mecánicos y comisiones
+export interface MecanicoConEstadisticas extends Mechanic {
+  trabajos_completados: number
+  total_ganancias: number
+  total_comisiones: number
+}
+
+export interface AsignacionMecanico {
+  id_mecanico: number
+  porcentaje_comision?: number
+}
+
+export interface AsignacionMecanicoResponse {
+  id_trabajo: number
+  id_mecanico: number
+  nombre_mecanico: string
+  porcentaje_comision: number
+  monto_comision: number
+  ganancia_trabajo: number
 }
 
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -26,47 +26,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Plus, Search, Eye, Edit, Trash2, UserCog, Wrench, DollarSign, Calendar, TrendingUp } from "lucide-react"
+import { Plus, Search, Eye, Edit, Trash2, UserCog, Wrench, DollarSign, Calendar, TrendingUp, RefreshCw } from "lucide-react"
 import type { Mechanic, MechanicCreate } from "@/lib/types"
-
-// Mock data generator
-const generateMockMechanics = (): Mechanic[] => {
-  const names = [
-    "Carlos Rodríguez",
-    "Miguel Hernández",
-    "José García",
-    "Antonio López",
-    "Francisco Martín",
-    "David Sánchez",
-    "Juan Pérez",
-    "Manuel González",
-    "Rafael Jiménez",
-    "Pedro Ruiz",
-    "Alejandro Moreno",
-    "Fernando Díaz",
-  ]
-
-  return names.map((name, index) => ({
-    id: `mech-${index + 1}`,
-    name,
-    mechanic_id: `MEC${String(index + 1).padStart(3, "0")}`,
-    jobs_completed: Math.floor(Math.random() * 150) + 10,
-    total_commission: Math.floor(Math.random() * 50000) + 5000,
-    total_profit: Math.floor(Math.random() * 75000) + 8000,
-    hire_date: new Date(
-      2020 + Math.floor(Math.random() * 4),
-      Math.floor(Math.random() * 12),
-      Math.floor(Math.random() * 28) + 1,
-    )
-      .toISOString()
-      .split("T")[0],
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }))
-}
+import { mecanicosApi } from "@/lib/api-client"
+import { LoadingSpinner } from "@/components/ui/loading-spinner"
+import { ErrorMessage } from "@/components/ui/error-message"
 
 export function MechanicsSection() {
-  const [mechanics, setMechanics] = useState<Mechanic[]>(() => generateMockMechanics())
+  const [mechanics, setMechanics] = useState<Mechanic[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
@@ -75,13 +44,113 @@ export function MechanicsSection() {
   const [selectedMechanic, setSelectedMechanic] = useState<Mechanic | null>(null)
   const [newMechanic, setNewMechanic] = useState<MechanicCreate & { id_number?: string }>({
     name: "",
-    mechanic_id: "",
     id_number: "",
   })
   const [editMechanic, setEditMechanic] = useState<MechanicCreate>({
     name: "",
-    mechanic_id: "",
   })
+
+  // Cargar mecánicos desde la API
+  useEffect(() => {
+    const fetchMechanics = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const data = await mecanicosApi.getAll()
+        
+        // Para cada mecánico, obtener sus estadísticas y mapear a la interfaz Mechanic
+        const mecanicosConStats = await Promise.all(
+          data.map(async (mecanico) => {
+            try {
+              const stats = await mecanicosApi.getStats(mecanico.id)
+              return {
+                id: mecanico.id.toString(),
+                name: mecanico.nombre,
+                mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
+                jobs_completed: stats.trabajos_completados || 0,
+                total_commission: parseFloat(stats.total_comisiones || 0),
+                total_profit: parseFloat(stats.total_ganancias || 0),
+                hire_date: mecanico.fecha_contratacion || new Date().toISOString(),
+                created_at: mecanico.created_at || new Date().toISOString(),
+                updated_at: mecanico.updated_at || new Date().toISOString()
+              }
+            } catch (err) {
+              // Si no se pueden obtener estadísticas, usar valores por defecto
+              return {
+                id: mecanico.id.toString(),
+                name: mecanico.nombre,
+                mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
+                jobs_completed: 0,
+                total_commission: 0,
+                total_profit: 0,
+                hire_date: mecanico.fecha_contratacion || new Date().toISOString(),
+                created_at: mecanico.created_at || new Date().toISOString(),
+                updated_at: mecanico.updated_at || new Date().toISOString()
+              }
+            }
+          })
+        )
+        
+        setMechanics(mecanicosConStats)
+      } catch (err) {
+        setError("Error al cargar los mecánicos.")
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchMechanics()
+  }, [])
+
+  // Función para recargar mecánicos
+  const reloadMechanics = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const data = await mecanicosApi.getAll()
+      
+      // Para cada mecánico, obtener sus estadísticas y mapear a la interfaz Mechanic
+      const mecanicosConStats = await Promise.all(
+        data.map(async (mecanico) => {
+          try {
+            const stats = await mecanicosApi.getStats(mecanico.id)
+            return {
+              id: mecanico.id.toString(),
+              name: mecanico.nombre,
+              mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
+              jobs_completed: stats.trabajos_completados || 0,
+              total_commission: parseFloat(stats.total_comisiones || 0),
+              total_profit: parseFloat(stats.total_ganancias || 0),
+              hire_date: mecanico.fecha_contratacion || new Date().toISOString(),
+              created_at: mecanico.created_at || new Date().toISOString(),
+              updated_at: mecanico.updated_at || new Date().toISOString()
+            }
+          } catch (err) {
+            // Si no se pueden obtener estadísticas, usar valores por defecto
+            return {
+              id: mecanico.id.toString(),
+              name: mecanico.nombre,
+              mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
+              jobs_completed: 0,
+              total_commission: 0,
+              total_profit: 0,
+              hire_date: mecanico.fecha_contratacion || new Date().toISOString(),
+              created_at: mecanico.created_at || new Date().toISOString(),
+              updated_at: mecanico.updated_at || new Date().toISOString()
+            }
+          }
+        })
+      )
+      
+      setMechanics(mecanicosConStats)
+    } catch (err) {
+      setError("Error al recargar los mecánicos.")
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   // Filter mechanics based on search term
   const filteredMechanics = useMemo(() => {
@@ -107,51 +176,81 @@ export function MechanicsSection() {
     }
   }, [mechanics])
 
-  const handleCreateMechanic = useCallback(() => {
-    if (!newMechanic.name.trim() || !newMechanic.mechanic_id.trim()) return
+  const handleCreateMechanic = useCallback(async () => {
+    if (!newMechanic.name.trim() || !newMechanic.id_number?.trim()) return
 
-    const mechanic: Mechanic = {
-      id: `mech-${Date.now()}`,
-      name: newMechanic.name.trim(),
-      mechanic_id: newMechanic.mechanic_id.trim(),
-      jobs_completed: 0,
-      total_commission: 0,
-      total_profit: 0,
-      hire_date: new Date().toISOString().split("T")[0],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+    try {
+      const mechanicData = {
+        nombre: newMechanic.name.trim(),
+        id_nacional: newMechanic.id_number.trim(),
+      }
+      
+      const mecanicoCreado = await mecanicosApi.create(mechanicData)
+      
+      // Mapear el mecánico creado a la interfaz Mechanic
+      const nuevoMechanic: Mechanic = {
+        id: mecanicoCreado.id.toString(),
+        name: mecanicoCreado.nombre,
+        mechanic_id: `MC-${mecanicoCreado.id}`, // Formato MC-1, MC-2, etc.
+        jobs_completed: 0,
+        total_commission: 0,
+        total_profit: 0,
+        hire_date: mecanicoCreado.fecha_contratacion || new Date().toISOString(),
+        created_at: mecanicoCreado.created_at || new Date().toISOString(),
+        updated_at: mecanicoCreado.updated_at || new Date().toISOString()
+      }
+      
+      setMechanics((prev) => [...prev, nuevoMechanic])
+      setNewMechanic({ name: "", id_number: "" })
+      setIsCreateDialogOpen(false)
+    } catch (err) {
+      setError("Error al crear el mecánico.")
+      console.error(err)
     }
-
-    setMechanics((prev) => [...prev, mechanic])
-    setNewMechanic({ name: "", mechanic_id: "", id_number: "" })
-    setIsCreateDialogOpen(false)
   }, [newMechanic])
 
-  const handleEditMechanic = useCallback(() => {
-    if (!selectedMechanic || !editMechanic.name.trim() || !editMechanic.mechanic_id.trim()) return
+  const handleEditMechanic = useCallback(async () => {
+    if (!selectedMechanic || !editMechanic.name.trim()) return
 
-    setMechanics((prev) =>
-      prev.map((mechanic) =>
-        mechanic.id === selectedMechanic.id
-          ? {
-              ...mechanic,
-              name: editMechanic.name.trim(),
-              mechanic_id: editMechanic.mechanic_id.trim(),
-              updated_at: new Date().toISOString(),
-            }
-          : mechanic,
-      ),
-    )
-    setIsEditDialogOpen(false)
-    setSelectedMechanic(null)
+    try {
+      const updatedMechanic = await mecanicosApi.update(parseInt(selectedMechanic.id), {
+        nombre: editMechanic.name.trim()
+      })
+      
+      // Mapear el mecánico actualizado a la interfaz Mechanic
+      const mecanicoActualizado: Mechanic = {
+        ...selectedMechanic,
+        name: updatedMechanic.nombre,
+        updated_at: updatedMechanic.updated_at || new Date().toISOString()
+      }
+      
+      setMechanics((prev) =>
+        prev.map((mechanic) =>
+          mechanic.id === selectedMechanic.id
+            ? mecanicoActualizado
+            : mechanic,
+        ),
+      )
+      setIsEditDialogOpen(false)
+      setSelectedMechanic(null)
+    } catch (err) {
+      setError("Error al editar el mecánico.")
+      console.error(err)
+    }
   }, [selectedMechanic, editMechanic])
 
-  const handleDeleteMechanic = useCallback(() => {
+  const handleDeleteMechanic = useCallback(async () => {
     if (!selectedMechanic) return
 
-    setMechanics((prev) => prev.filter((mechanic) => mechanic.id !== selectedMechanic.id))
-    setIsDeleteDialogOpen(false)
-    setSelectedMechanic(null)
+    try {
+      await mecanicosApi.delete(parseInt(selectedMechanic.id))
+      setMechanics((prev) => prev.filter((mechanic) => mechanic.id !== selectedMechanic.id))
+      setIsDeleteDialogOpen(false)
+      setSelectedMechanic(null)
+    } catch (err) {
+      setError("Error al eliminar el mecánico.")
+      console.error(err)
+    }
   }, [selectedMechanic])
 
   const openViewDialog = useCallback((mechanic: Mechanic) => {
@@ -163,7 +262,6 @@ export function MechanicsSection() {
     setSelectedMechanic(mechanic)
     setEditMechanic({
       name: mechanic.name,
-      mechanic_id: mechanic.mechanic_id,
     })
     setIsEditDialogOpen(true)
   }, [])
@@ -173,6 +271,27 @@ export function MechanicsSection() {
     setIsDeleteDialogOpen(true)
   }, [])
 
+  if (loading && mechanics.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <LoadingSpinner size="lg" />
+        <span className="ml-3 text-lg">Cargando mecánicos...</span>
+      </div>
+    )
+  }
+
+  if (error && mechanics.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <ErrorMessage error={new Error(error)} onRetry={reloadMechanics} />
+        <Button onClick={reloadMechanics} className="mt-4">
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Reintentar
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -181,55 +300,52 @@ export function MechanicsSection() {
           <h1 className="text-3xl font-bold tracking-tight">Mecánicos</h1>
           <p className="text-muted-foreground">Gestiona la información de los mecánicos del taller</p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Nuevo Mecánico
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-white">
-            <DialogHeader>
-              <DialogTitle>Crear Nuevo Mecánico</DialogTitle>
-              <DialogDescription>Ingresa la información del nuevo mecánico</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="id_number">Número de Identificación</Label>
-                <Input
-                  id="id_number"
-                  value={newMechanic.id_number || ""}
-                  onChange={(e) => setNewMechanic((prev) => ({ ...prev, id_number: e.target.value }))}
-                  placeholder="Ingresa el número de identificación"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="name">Nombre del Mecánico</Label>
-                <Input
-                  id="name"
-                  value={newMechanic.name}
-                  onChange={(e) => setNewMechanic((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="Ingresa el nombre completo"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="mechanic_id">ID del Mecánico</Label>
-                <Input
-                  id="mechanic_id"
-                  value={newMechanic.mechanic_id}
-                  onChange={(e) => setNewMechanic((prev) => ({ ...prev, mechanic_id: e.target.value }))}
-                  placeholder="Ej: MEC001"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                Cancelar
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={reloadMechanics} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Actualizar
+          </Button>
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                Nuevo Mecánico
               </Button>
-              <Button onClick={handleCreateMechanic}>Crear Mecánico</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent className="bg-white">
+              <DialogHeader>
+                <DialogTitle>Crear Nuevo Mecánico</DialogTitle>
+                <DialogDescription>Ingresa la información del nuevo mecánico</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="id_number">Número de Identificación</Label>
+                  <Input
+                    id="id_number"
+                    value={newMechanic.id_number || ""}
+                    onChange={(e) => setNewMechanic((prev) => ({ ...prev, id_number: e.target.value }))}
+                    placeholder="Ingresa el número de identificación"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="name">Nombre del Mecánico</Label>
+                  <Input
+                    id="name"
+                    value={newMechanic.name}
+                    onChange={(e) => setNewMechanic((prev) => ({ ...prev, name: e.target.value }))}
+                    placeholder="Ingresa el nombre completo"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleCreateMechanic}>Crear Mecánico</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Statistics Cards */}
@@ -258,7 +374,7 @@ export function MechanicsSection() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${stats.totalCommissions.toLocaleString()}</div>
+            <div className="text-2xl font-bold">₡{stats.totalCommissions.toLocaleString()}</div>
           </CardContent>
         </Card>
       </div>
@@ -286,63 +402,72 @@ export function MechanicsSection() {
           <CardDescription>Información detallada de todos los mecánicos registrados</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID Mecánico</TableHead>
-                <TableHead>Nombre</TableHead>
-                <TableHead>Trabajos Completados</TableHead>
-                <TableHead>Comisiones</TableHead>
-                <TableHead>Fecha de Contratación</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredMechanics.map((mechanic) => (
-                <TableRow key={mechanic.id}>
-                  <TableCell>
-                    <Badge variant="outline">{mechanic.mechanic_id}</Badge>
-                  </TableCell>
-                  <TableCell className="font-medium">{mechanic.name}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{mechanic.jobs_completed}</Badge>
-                  </TableCell>
-                  <TableCell>${mechanic.total_commission.toLocaleString()}</TableCell>
-                  <TableCell>{new Date(mechanic.hire_date).toLocaleDateString()}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0"
-                        onClick={() => openViewDialog(mechanic)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0"
-                        onClick={() => openEditDialog(mechanic)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                        onClick={() => openDeleteDialog(mechanic)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <LoadingSpinner size="sm" />
+              <span className="ml-2">Actualizando...</span>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID Mecánico</TableHead>
+                  <TableHead>Nombre</TableHead>
+                  <TableHead>Trabajos Completados</TableHead>
+                  <TableHead>Comisiones</TableHead>
+                  <TableHead>Fecha de Contratación</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {filteredMechanics.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">No se encontraron mecánicos</div>
+              </TableHeader>
+              <TableBody>
+                {filteredMechanics.map((mechanic) => (
+                  <TableRow key={mechanic.id}>
+                    <TableCell>
+                      <Badge variant="outline">{mechanic.mechanic_id}</Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">{mechanic.name}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{mechanic.jobs_completed || 0}</Badge>
+                    </TableCell>
+                    <TableCell>₡{(mechanic.total_commission || 0).toLocaleString()}</TableCell>
+                    <TableCell>{mechanic.hire_date ? new Date(mechanic.hire_date).toLocaleDateString() : 'N/A'}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() => openViewDialog(mechanic)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() => openEditDialog(mechanic)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                          onClick={() => openDeleteDialog(mechanic)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+          {filteredMechanics.length === 0 && !loading && (
+            <div className="text-center py-8 text-muted-foreground">
+              {searchTerm ? "No se encontraron mecánicos con esa búsqueda" : "No hay mecánicos registrados"}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -379,7 +504,7 @@ export function MechanicsSection() {
                   <div className="flex items-center gap-2">
                     <DollarSign className="h-4 w-4 text-green-600" />
                     <span className="text-lg font-semibold text-green-600">
-                      ${selectedMechanic.total_commission.toLocaleString()}
+                      ₡{selectedMechanic.total_commission.toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -389,7 +514,7 @@ export function MechanicsSection() {
                   <div className="flex items-center gap-2">
                     <TrendingUp className="h-4 w-4 text-emerald-600" />
                     <span className="text-lg font-semibold text-emerald-600">
-                      ${selectedMechanic.total_profit.toLocaleString()}
+                      ₡{selectedMechanic.total_profit.toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -429,15 +554,6 @@ export function MechanicsSection() {
                 placeholder="Ingresa el nombre completo"
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="edit-mechanic_id">ID del Mecánico</Label>
-              <Input
-                id="edit-mechanic_id"
-                value={editMechanic.mechanic_id}
-                onChange={(e) => setEditMechanic((prev) => ({ ...prev, mechanic_id: e.target.value }))}
-                placeholder="Ej: MEC001"
-              />
-            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
@@ -470,7 +586,7 @@ export function MechanicsSection() {
                   <strong>Trabajos Completados:</strong> {selectedMechanic.jobs_completed}
                 </p>
                 <p>
-                  <strong>Comisiones:</strong> ${selectedMechanic.total_commission.toLocaleString()}
+                  <strong>Comisiones:</strong> ₡{selectedMechanic.total_commission.toLocaleString()}
                 </p>
               </div>
             </div>

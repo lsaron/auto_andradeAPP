@@ -1,4 +1,6 @@
 // API Client with proper error handling and type safety
+import type { AsignacionMecanico } from './types'
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"
 
 class ApiError extends Error {
@@ -256,3 +258,111 @@ export const apiClient = {
 }
 
 export { ApiError }
+
+// Mecánicos API
+export const mecanicosApi = {
+  // Obtener todos los mecánicos
+  getAll: async (): Promise<Mechanic[]> => {
+    const response = await fetch(`${API_BASE_URL}/mecanicos/`)
+    if (!response.ok) throw new Error('Error al obtener mecánicos')
+    return response.json()
+  },
+
+  // Obtener mecánico por ID
+  getById: async (id: number): Promise<Mechanic> => {
+    const response = await fetch(`${API_BASE_URL}/mecanicos/${id}`)
+    if (!response.ok) throw new Error('Error al obtener mecánico')
+    return response.json()
+  },
+
+  // Crear nuevo mecánico
+  create: async (data: MechanicCreate): Promise<Mechanic> => {
+    const response = await fetch(`${API_BASE_URL}/mecanicos/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!response.ok) throw new Error('Error al crear mecánico')
+    return response.json()
+  },
+
+  // Actualizar mecánico
+  update: async (id: number, data: Partial<MechanicCreate>): Promise<Mechanic> => {
+    const response = await fetch(`${API_BASE_URL}/mecanicos/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!response.ok) throw new Error('Error al actualizar mecánico')
+    return response.json()
+  },
+
+  // Eliminar mecánico
+  delete: async (id: number): Promise<void> => {
+    const response = await fetch(`${API_BASE_URL}/mecanicos/${id}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) throw new Error('Error al eliminar mecánico')
+  },
+
+  // Asignar mecánicos a un trabajo
+  assignToWork: async (trabajoId: number, mecanicos: AsignacionMecanico[]): Promise<any> => {
+    console.log("🚨🚨🚨 API CLIENT: Llamando a assignToWork")
+    console.log("🔍 Trabajo ID:", trabajoId)
+    console.log("🔍 Mecánicos:", mecanicos)
+    
+    const response = await fetch(`${API_BASE_URL}/mecanicos/trabajos/${trabajoId}/asignar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(mecanicos),
+    })
+    
+    console.log("🔍 Status de la respuesta:", response.status)
+    console.log("🔍 Headers de la respuesta:", response.headers)
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error("❌ Error en la respuesta:", errorText)
+      throw new Error(`Error al asignar mecánicos: ${response.status} - ${errorText}`)
+    }
+    
+    const result = await response.json()
+    console.log("✅ Resultado de asignación:", result)
+    return result
+  },
+
+  // Buscar mecánicos
+  search: async (query: string): Promise<Mechanic[]> => {
+    const response = await fetch(`${API_BASE_URL}/mecanicos/buscar/?q=${encodeURIComponent(query)}`)
+    if (!response.ok) throw new Error('Error al buscar mecánicos')
+    return response.json()
+  },
+
+  // Obtener estadísticas de mecánico
+  getStats: async (id: number, month?: string): Promise<MechanicConEstadisticas> => {
+    const url = month 
+      ? `${API_BASE_URL}/mecanicos/${id}/estadisticas?mes=${month}`
+      : `${API_BASE_URL}/mecanicos/${id}/estadisticas`
+    const response = await fetch(url)
+    if (!response.ok) throw new Error('Error al obtener estadísticas')
+    return response.json()
+  },
+
+  // Obtener reporte mensual
+  getMonthlyReport: async (month: string): Promise<MechanicConEstadisticas[]> => {
+    const response = await fetch(`${API_BASE_URL}/mecanicos/reporte/mensual/${month}`)
+    if (!response.ok) throw new Error('Error al obtener reporte mensual')
+    return response.json()
+  },
+
+  // Asignar mecánicos a trabajo
+  assignToWork: async (workId: number, mechanics: AsignacionMecanico[]): Promise<AsignacionMecanicoResponse[]> => {
+    const response = await fetch(`${API_BASE_URL}/mecanicos/trabajos/${workId}/asignar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(mechanics),
+    })
+    if (!response.ok) throw new Error('Error al asignar mecánicos')
+    return response.json()
+  },
+}

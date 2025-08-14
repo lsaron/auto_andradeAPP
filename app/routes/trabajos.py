@@ -82,7 +82,7 @@ def crear_trabajo(trabajo: TrabajoSchema, db: Session = Depends(get_db)):
     db.commit()
     return {
         "message": "Trabajo creado con sus gastos correctamente",
-        "id_trabajo": nuevo_trabajo.id
+        "id": nuevo_trabajo.id
     }
 
 
