@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { BarChart3, TrendingUp, TrendingDown, DollarSign, Calendar, Download } from "lucide-react"
 
 interface MonthlyReport {
@@ -27,6 +30,7 @@ interface WorkOrderReport {
 }
 
 export function ReportsSection() {
+  console.log("🚀 ReportsSection renderizado, isAuthModalOpen:", true, "isAuthenticated:", false)
   const [selectedYear, setSelectedYear] = useState("")
   const [selectedMonth, setSelectedMonth] = useState("")
   const [monthlyReports, setMonthlyReports] = useState<MonthlyReport[]>([])
@@ -35,6 +39,51 @@ export function ReportsSection() {
   const [error, setError] = useState<string | null>(null)
   const [currentReport, setCurrentReport] = useState<MonthlyReport | null>(null)
   const [previousReport, setPreviousReport] = useState<MonthlyReport | null>(null)
+  
+  // Estados para autenticación simple
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(true) // Se abre automáticamente
+  const [authPassword, setAuthPassword] = useState("")
+  const [authError, setAuthError] = useState("")
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [adminUsername] = useState("leonardo")
+  
+  // Estado de carga inicial
+  const [initialLoading, setInitialLoading] = useState(true)
+
+  // Función de autenticación simple
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    try {
+      const response = await fetch('http://localhost:8000/api/auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: adminUsername,
+          password: authPassword
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setIsAuthenticated(true)
+        setIsAuthModalOpen(false)
+        setAuthPassword("")
+        setAuthError("")
+        setInitialLoading(false)
+        console.log("✅ Autenticación exitosa para reportes")
+      } else {
+        setAuthError(data.message || "Error de autenticación")
+        console.log("❌ Error de autenticación:", data.message)
+      }
+    } catch (error) {
+      console.error("Error en autenticación:", error)
+      setAuthError("Error de conexión. Intente nuevamente.")
+    }
+  }
 
   // Cargar datos reales del backend
   const loadReportsData = async () => {
@@ -173,8 +222,14 @@ export function ReportsSection() {
 
   // Cargar datos al montar el componente
   useEffect(() => {
-    loadReportsData()
-  }, [])
+    if (isAuthenticated) {
+      loadReportsData()
+    } else {
+      // Si no está autenticado, no mostrar loading
+      setLoading(false)
+      setInitialLoading(false)
+    }
+  }, [isAuthenticated])
 
   // Actualizar mes seleccionado cuando cambie el año
   useEffect(() => {
@@ -233,6 +288,72 @@ export function ReportsSection() {
   const profitChange = currentReport && previousReport 
     ? calculatePercentageChange(currentReport.netProfit, previousReport.netProfit)
     : 0
+
+  // Si no está autenticado, mostrar solo el modal
+  if (!isAuthenticated) {
+    console.log("🔒 Usuario no autenticado, mostrando modal")
+    return (
+      <Dialog open={isAuthModalOpen} onOpenChange={setIsAuthModalOpen}>
+        <DialogContent className="sm:max-w-[425px] mx-4 sm:mx-auto bg-white dark:bg-gray-900">
+          <DialogHeader>
+            <DialogTitle className="text-lg">
+              🔐 Acceso a Reportes Financieros
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center">
+                <div className="w-8 h-8 text-blue-600">
+                  <BarChart3 className="w-8 h-8" />
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Los reportes financieros están protegidos por contraseña.<br/>
+                Solo personal autorizado puede acceder a esta información.
+              </p>
+            </div>
+            
+            <form onSubmit={handleAuthSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="authPassword" className="text-sm font-medium">
+                  Contraseña del Taller
+                </Label>
+                <Input
+                  id="authPassword"
+                  type="password"
+                  value={authPassword}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAuthPassword(e.target.value)}
+                  placeholder="Ingrese la contraseña"
+                  className="w-full"
+                  autoFocus
+                />
+              </div>
+              
+              {authError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                  <p className="text-sm text-red-600">{authError}</p>
+                </div>
+              )}
+              
+              <div className="flex gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsAuthModalOpen(false)}
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700">
+                  Desbloquear
+                </Button>
+              </div>
+            </form>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
 
   // Mostrar estado de carga o error
   if (loading) {

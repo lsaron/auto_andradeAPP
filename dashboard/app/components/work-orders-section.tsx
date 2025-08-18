@@ -870,6 +870,7 @@ export function WorkOrdersSection() {
                   placeholder="Buscar vehículo por placa o cliente..."
                   isClearable
                   className="w-full"
+
                   styles={{
                     control: (base) => ({
                       ...base,
@@ -904,7 +905,7 @@ export function WorkOrdersSection() {
                   id="description"
                   value={newOrder.description}
                   onChange={(e) => setNewOrder({ ...newOrder, description: e.target.value })}
-                  placeholder="Describe detalladamente el trabajo realizado, problemas encontrados, soluciones aplicadas, etc."
+                  placeholder="Descripción del trabajo"
                   rows={4}
                   className="resize-none"
                 />
@@ -1069,7 +1070,7 @@ export function WorkOrdersSection() {
               {/* Total Cost */}
               <div className="space-y-2">
                 <Label htmlFor="totalCost" className="text-sm font-medium">
-                  Costo Total Cobrado al Cliente
+                  Mano de Obra
                 </Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm text-gray-500">₡</span>
