@@ -79,7 +79,6 @@ export function WorkOrdersSection() {
     endMonth: "",
     endYear: "",
   })
-  const [isDateFiltering, setIsDateFiltering] = useState(false)
 
   // Modal states
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false)
@@ -597,7 +596,6 @@ export function WorkOrdersSection() {
       setFilteredWorkOrders(filtered)
       setHasMore(false) // Disable infinite scroll during search/filter
       setIsSearching(false)
-      setIsDateFiltering(false)
     },
     [workOrders],
   )
@@ -608,7 +606,6 @@ export function WorkOrdersSection() {
         setFilteredWorkOrders(workOrders)
         setHasMore(page < Math.ceil(totalWorkOrders / 10))
         setIsSearching(false)
-        setIsDateFiltering(false)
         return
       }
 
@@ -620,16 +617,13 @@ export function WorkOrdersSection() {
   )
 
   const handleDateFilter = useCallback(
-    async (dateRange: { startMonth: string; startYear: string; endMonth: string; endYear: string }) => {
+    (dateRange: { startMonth: string; startYear: string; endMonth: string; endYear: string }) => {
       if (!dateRange.startMonth && !dateRange.startYear && !dateRange.endMonth && !dateRange.endYear && !searchQuery.trim()) {
         setFilteredWorkOrders(workOrders)
         setHasMore(page < Math.ceil(totalWorkOrders / 10))
-        setIsDateFiltering(false)
         return
       }
 
-      setIsDateFiltering(true)
-      await new Promise((resolve) => setTimeout(resolve, 200))
       handleSearchAndFilter(searchQuery, dateRange)
     },
     [workOrders, page, totalWorkOrders, searchQuery, handleSearchAndFilter],
@@ -639,7 +633,6 @@ export function WorkOrdersSection() {
     setSearchQuery("")
     setDateFilter({ startMonth: "", startYear: "", endMonth: "", endYear: "" })
     setIsSearching(false)
-    setIsDateFiltering(false)
     setFilteredWorkOrders(workOrders)
     setHasMore(page < Math.ceil(totalWorkOrders / 20))
   }
@@ -660,13 +653,9 @@ export function WorkOrdersSection() {
     return () => clearTimeout(timeoutId)
   }, [searchQuery, handleSearch])
 
-  // Date filter effect
+  // Date filter effect - immediate filtering without delay
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      handleDateFilter(dateFilter)
-    }, 300)
-
-    return () => clearTimeout(timeoutId)
+    handleDateFilter(dateFilter)
   }, [dateFilter, handleDateFilter])
 
   // Infinite scroll handler
@@ -1090,7 +1079,7 @@ export function WorkOrdersSection() {
                     inputMode="decimal"
                     value={newOrder.totalCost}
                     onChange={(e) => setNewOrder({ ...newOrder, totalCost: e.target.value })}
-                    placeholder="0.00 (opcional para proyectos en curso)"
+                    placeholder="0.00"
                     className="pl-8"
                   />
                 </div>
@@ -1481,10 +1470,10 @@ export function WorkOrdersSection() {
               </div>
               {(searchQuery || dateFilter.startMonth || dateFilter.startYear || dateFilter.endMonth || dateFilter.endYear) && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  {isSearching || isDateFiltering ? (
+                  {isSearching ? (
                     <>
                       <LoadingSpinner size="sm" />
-                      <span>Filtrando...</span>
+                      <span>Buscando...</span>
                     </>
                   ) : (
                     <span>
@@ -1508,22 +1497,50 @@ export function WorkOrdersSection() {
                     <Select
                       placeholder="Mes"
                       options={monthOptions}
-                      value={monthOptions.find(option => option.value === dateFilter.startMonth)}
+                      value={monthOptions.find(option => option.value === dateFilter.startMonth) || null}
                       onChange={(option) => setDateFilter({ ...dateFilter, startMonth: option?.value || "" })}
-                      className="w-24 text-sm"
+                      className="w-24 text-sm font-medium"
                       classNamePrefix="react-select"
-                      isClearable
+                      isClearable={false}
+                      styles={{
+                        control: (provided) => ({
+                          ...provided,
+                          backgroundColor: 'white',
+                          borderColor: '#d1d5db',
+                          '&:hover': {
+                            borderColor: '#9ca3af'
+                          }
+                        }),
+                        singleValue: (provided) => ({
+                          ...provided,
+                          color: '#1f2937',
+                          fontWeight: '500'
+                        })
+                      }}
                     />
                     <Select
                       placeholder="Año"
                       options={yearOptions}
-                      value={yearOptions.find(option => option.value === dateFilter.startYear)}
+                      value={yearOptions.find(option => option.value === dateFilter.startYear) || null}
                       onChange={(option) => setDateFilter({ ...dateFilter, startYear: option?.value || "" })}
-                      className="w-20 text-sm"
+                      className="w-20 text-sm font-medium"
                       classNamePrefix="react-select"
-                      isClearable
-                      isLoading={yearOptions.length === 0}
-                      noOptionsMessage={() => "Cargando años..."}
+                      isClearable={false}
+                      styles={{
+                        control: (provided) => ({
+                          ...provided,
+                          backgroundColor: 'white',
+                          borderColor: '#d1d5db',
+                          '&:hover': {
+                            borderColor: '#9ca3af'
+                          }
+                        }),
+                        singleValue: (provided) => ({
+                          ...provided,
+                          color: '#1f2937',
+                          fontWeight: '500'
+                        })
+                      }}
                     />
                   </div>
                 </div>
@@ -1535,22 +1552,50 @@ export function WorkOrdersSection() {
                     <Select
                       placeholder="Mes"
                       options={monthOptions}
-                      value={monthOptions.find(option => option.value === dateFilter.endMonth)}
+                      value={monthOptions.find(option => option.value === dateFilter.endMonth) || null}
                       onChange={(option) => setDateFilter({ ...dateFilter, endMonth: option?.value || "" })}
-                      className="w-24 text-sm"
+                      className="w-24 text-sm font-medium"
                       classNamePrefix="react-select"
-                      isClearable
+                      isClearable={false}
+                      styles={{
+                        control: (provided) => ({
+                          ...provided,
+                          backgroundColor: 'white',
+                          borderColor: '#d1d5db',
+                          '&:hover': {
+                            borderColor: '#9ca3af'
+                          }
+                        }),
+                        singleValue: (provided) => ({
+                          ...provided,
+                          color: '#1f2937',
+                          fontWeight: '500'
+                        })
+                      }}
                     />
                     <Select
                       placeholder="Año"
                       options={yearOptions}
-                      value={dateFilter.endYear ? yearOptions.find(option => option.value === dateFilter.endYear) : null}
+                      value={yearOptions.find(option => option.value === dateFilter.endYear) || null}
                       onChange={(option) => setDateFilter({ ...dateFilter, endYear: option?.value || "" })}
-                      className="w-20 text-sm"
+                      className="w-20 text-sm font-medium"
                       classNamePrefix="react-select"
-                      isClearable
-                      isLoading={yearOptions.length === 0}
-                      noOptionsMessage={() => "Cargando años..."}
+                      isClearable={false}
+                      styles={{
+                        control: (provided) => ({
+                          ...provided,
+                          backgroundColor: 'white',
+                          borderColor: '#d1d5db',
+                          '&:hover': {
+                            borderColor: '#9ca3af'
+                          }
+                        }),
+                        singleValue: (provided) => ({
+                          ...provided,
+                          color: '#1f2937',
+                          fontWeight: '500'
+                        })
+                      }}
                     />
                   </div>
                 </div>
@@ -1566,17 +1611,10 @@ export function WorkOrdersSection() {
                   </Button>
                 )}
               </div>
-              
-              {/* Información sobre años dinámicos */}
-              {yearOptions.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  💡 Los años disponibles se generan automáticamente desde los datos de la base de datos
-                </p>
-              )}
             </div>
 
             {/* Search and Filter Results Summary */}
-            {(searchQuery || dateFilter.startMonth || dateFilter.startYear || dateFilter.endMonth || dateFilter.endYear) && !(isSearching || isDateFiltering) && (
+            {(searchQuery || dateFilter.startMonth || dateFilter.startYear || dateFilter.endMonth || dateFilter.endYear) && !isSearching && (
               <div className="flex flex-wrap gap-2">
                 {searchQuery && (
                   <Badge variant="outline" className="text-xs">
@@ -1780,7 +1818,7 @@ export function WorkOrdersSection() {
 
                 {/* Search/Filter results empty state */}
                 {(searchQuery || dateFilter.startMonth || dateFilter.startYear || dateFilter.endMonth || dateFilter.endYear) &&
-                  !(isSearching || isDateFiltering) &&
+                  !isSearching &&
                   filteredWorkOrders.length === 0 && (
                     <div className="text-center py-12">
                       <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />

@@ -27,6 +27,8 @@ import {
   Printer,
   Search,
   X,
+  Mail,
+  Phone,
 } from "lucide-react"
 import {
   AlertDialog,
@@ -49,6 +51,7 @@ interface Car {
   vin?: string
   owner: string
   ownerId: string
+  ownerNationalId?: string
   ownerEmail?: string
   ownerPhone?: string
   ownerAddress?: string
@@ -102,6 +105,13 @@ export function CarsSection() {
   const [initialLoading, setInitialLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [totalCars, setTotalCars] = useState(0)
+
+  // Financial data protection states
+  const [isFinancialDataUnlocked, setIsFinancialDataUnlocked] = useState(false)
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
+  const [authPassword, setAuthPassword] = useState("")
+  const [authError, setAuthError] = useState("")
+  const [adminUsername] = useState("leonardo") // Usuario fijo del administrador
 
   // Update the cars state initialization
   const [cars, setCars] = useState<Car[]>([])
@@ -496,7 +506,7 @@ export function CarsSection() {
       console.log("🔍 Empty query, reloading all cars...")
       // Reload cars to ensure we have the complete list
       await loadCars(1, true)
-      setHasMore(true) // Re-enable infinite scroll
+      // No habilitar infinite scroll ya que no hay paginación real
       return
     }
 
@@ -530,6 +540,56 @@ export function CarsSection() {
     setIsSearching(false)
   }
 
+  // Financial data authentication
+  const handleFinancialDataClick = () => {
+    if (!isFinancialDataUnlocked) {
+      setIsAuthModalOpen(true)
+      setAuthPassword("")
+      setAuthError("")
+    }
+  }
+
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    try {
+      console.log("🔐 Iniciando autenticación...")
+      console.log("🔐 Username:", adminUsername)
+      console.log("🔐 URL de autenticación: http://localhost:8000/api/auth")
+      
+      // Llamar a la API de autenticación del backend
+      const response = await fetch('http://localhost:8000/api/auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: adminUsername, // Usuario fijo para el taller
+          password: authPassword
+        })
+      })
+
+              console.log("🔐 Response status:", response.status)
+        console.log("🔐 Response headers:", response.headers)
+        
+        const data = await response.json()
+        console.log("🔐 Response data:", data)
+
+        if (data.success) {
+        setIsFinancialDataUnlocked(true)
+        setIsAuthModalOpen(false)
+        setAuthPassword("")
+        setAuthError("")
+        console.log("🔐 Autenticación exitosa:", data.nombre_completo)
+      } else {
+        setAuthError(data.message || "Error de autenticación")
+      }
+    } catch (error) {
+      console.error("🔐 Error en autenticación:", error)
+      setAuthError("Error de conexión. Intente nuevamente.")
+    }
+  }
+
   // Add useEffect to initialize filtered cars and handle search
   useEffect(() => {
     loadCars(1, true) // Load first page on mount
@@ -540,6 +600,8 @@ export function CarsSection() {
   useEffect(() => {
     if (selectedCar) {
       loadCarWorkHistory(selectedCar.licensePlate)
+      // Reset financial data access when switching cars
+      setIsFinancialDataUnlocked(false)
     }
   }, [selectedCar])
 
@@ -571,56 +633,84 @@ export function CarsSection() {
 
   // Add this new function to handle API calls with pagination
   const loadCars = async (pageNum: number, reset = false) => {
-  if (loading) return
+    if (loading) return
 
-  try {
-    setLoading(true)
-    setError(null)
+    try {
+      setLoading(true)
+      setError(null)
 
-    if (reset) {
-      setInitialLoading(true)
-    }
+      if (reset) {
+        setInitialLoading(true)
+      }
 
-    // Llamada real al backend local
-    const response = await fetch("http://localhost:8000/api/carros/")
-    const data = await response.json()
+      // Llamada real al backend local
+      const response = await fetch("http://localhost:8000/api/carros/")
+      const data = await response.json()
 
-    // Adaptar la estructura del backend a la esperada por el frontend
-    const transformed = data.map((car: any, index: number) => ({
-      id: index.toString(), // No hay campo ID real en la respuesta
-      licensePlate: car.matricula,
-      brand: car.marca,
-      model: car.modelo,
-      year: car.anio,
-      owner: car.nombre_cliente,
-      ownerId: car.id_cliente_actual,
-      registrationDate: new Date().toISOString().split("T")[0], // Default temporal
-    }))
+      console.log("🔍 Datos recibidos del backend:", JSON.stringify(data, null, 2))
 
-    if (reset) {
+      // Obtener información completa de los clientes
+      const clientIds = [...new Set(data.map((car: any) => car.id_cliente_actual))]
+      console.log("🔍 IDs de clientes únicos:", clientIds)
+      
+      const clientDetails: Record<string, any> = {}
+      for (const clientId of clientIds) {
+        try {
+          const clientResponse = await fetch(`http://localhost:8000/api/clientes/${clientId as string}`)
+          if (clientResponse.ok) {
+            const clientData = await clientResponse.json()
+            clientDetails[clientId as string] = clientData
+            console.log("🔍 Datos del cliente:", clientId, clientData)
+          }
+        } catch (error) {
+          console.warn("🔍 Error obteniendo datos del cliente:", clientId, error)
+        }
+      }
+
+      // Adaptar la estructura del backend a la esperada por el frontend
+      const transformed = data.map((car: any, index: number) => {
+        const clientInfo = clientDetails[car.id_cliente_actual as string] || {}
+        console.log("🔍 Carro individual:", car)
+        console.log("🔍 Información del cliente:", clientInfo)
+        
+        return {
+          id: `${car.matricula}-${car.id_cliente_actual}`, // ID único basado en placa y cliente
+          licensePlate: car.matricula,
+          brand: car.marca,
+          model: car.modelo,
+          year: car.anio,
+          owner: car.nombre_cliente,
+          ownerId: car.id_cliente_actual,
+          ownerNationalId: clientInfo.id_nacional || clientInfo.cedula || car.id_cliente_actual,
+          ownerEmail: clientInfo.correo || clientInfo.email,
+          ownerPhone: clientInfo.telefono || clientInfo.phone,
+          registrationDate: new Date().toISOString().split("T")[0], // Default temporal
+        }
+      })
+
+      console.log("🔍 Datos transformados:", transformed)
+
+      // Siempre reemplazar los datos, no concatenar
       setCars(transformed)
       setFilteredCars(transformed)
-    } else {
-      setCars((prev) => [...prev, ...transformed])
-      setFilteredCars((prev) => [...prev, ...transformed])
-    }
-
-    setTotalCars(transformed.length)
-    setHasMore(false) // No hay paginación real por ahora
-    setPage(1)
-  } catch (err) {
-    setError(err instanceof Error ? err : new Error("Error cargando vehículos"))
-    if (reset) {
-      setCars([])
-      setFilteredCars([])
-    }
-  } finally {
-    setLoading(false)
-    if (reset) {
-      setInitialLoading(false)
+      setTotalCars(transformed.length)
+      
+      // Como no hay paginación real en el backend, siempre marcamos que no hay más
+      setHasMore(false)
+      setPage(1)
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error("Error cargando vehículos"))
+      if (reset) {
+        setCars([])
+        setFilteredCars([])
+      }
+    } finally {
+      setLoading(false)
+      if (reset) {
+        setInitialLoading(false)
+      }
     }
   }
-}
 
 
 
@@ -667,7 +757,6 @@ export function CarsSection() {
                   value={newCar.licensePlate}
                   onChange={(e) => setNewCar({ ...newCar, licensePlate: e.target.value })}
                   className="sm:col-span-3"
-                  placeholder="ABC-123"
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
@@ -679,7 +768,6 @@ export function CarsSection() {
                   value={newCar.brand}
                   onChange={(e) => setNewCar({ ...newCar, brand: e.target.value })}
                   className="sm:col-span-3"
-                  placeholder="Toyota"
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
@@ -691,7 +779,6 @@ export function CarsSection() {
                   value={newCar.model}
                   onChange={(e) => setNewCar({ ...newCar, model: e.target.value })}
                   className="sm:col-span-3"
-                  placeholder="Corolla"
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
@@ -704,7 +791,6 @@ export function CarsSection() {
                   value={newCar.year}
                   onChange={(e) => setNewCar({ ...newCar, year: e.target.value })}
                   className="sm:col-span-3"
-                  placeholder="2023"
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
@@ -732,19 +818,6 @@ export function CarsSection() {
                       fontSize: "14px",
                     }),
                   }}
-                />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
-                <Label htmlFor="mileage" className="sm:text-right text-sm">
-                  Kilometraje
-                </Label>
-                <Input
-                  id="mileage"
-                  type="number"
-                  value={newCar.mileage}
-                  onChange={(e) => setNewCar({ ...newCar, mileage: e.target.value })}
-                  className="sm:col-span-3"
-                  placeholder="50000"
                 />
               </div>
             </div>
@@ -778,7 +851,6 @@ export function CarsSection() {
                         value={editingCar.licensePlate}
                         onChange={(e) => setEditingCar({ ...editingCar, licensePlate: e.target.value })}
                         className="sm:col-span-3"
-                        placeholder="ABC-123"
                       />
                     </div>
 
@@ -791,7 +863,6 @@ export function CarsSection() {
                         value={editingCar.brand}
                         onChange={(e) => setEditingCar({ ...editingCar, brand: e.target.value })}
                         className="sm:col-span-3"
-                        placeholder="Toyota"
                       />
                     </div>
 
@@ -804,7 +875,6 @@ export function CarsSection() {
                         value={editingCar.model}
                         onChange={(e) => setEditingCar({ ...editingCar, model: e.target.value })}
                         className="sm:col-span-3"
-                        placeholder="Corolla"
                       />
                     </div>
 
@@ -823,7 +893,6 @@ export function CarsSection() {
                           })
                         }
                         className="sm:col-span-3"
-                        placeholder="2023"
                       />
                     </div>
 
@@ -1195,16 +1264,31 @@ export function CarsSection() {
                         <span className="text-sm font-medium">Nombre:</span>
                         <span className="font-semibold">{selectedCar.owner}</span>
                       </div>
+                      {selectedCar.ownerNationalId && (
+                        <div className="flex justify-between py-2 border-b">
+                          <span className="text-sm font-medium flex items-center gap-2">
+                            <Hash className="h-4 w-4" />
+                            Cédula:
+                          </span>
+                          <span className="font-mono text-sm">{selectedCar.ownerNationalId}</span>
+                        </div>
+                      )}
                       {selectedCar.ownerEmail && (
                         <div className="flex justify-between py-2 border-b">
-                          <span className="text-sm font-medium">Email:</span>
+                          <span className="text-sm font-medium flex items-center gap-2">
+                            <Mail className="h-4 w-4" />
+                            Email:
+                          </span>
                           <span className="text-sm break-all">{selectedCar.ownerEmail}</span>
                         </div>
                       )}
                       {selectedCar.ownerPhone && (
                         <div className="flex justify-between py-2 border-b">
-                          <span className="text-sm font-medium">Teléfono:</span>
-                          <span>{selectedCar.ownerPhone}</span>
+                          <span className="text-sm font-medium flex items-center gap-2">
+                            <Phone className="h-4 w-4" />
+                            Teléfono:
+                          </span>
+                          <span className="font-mono">{selectedCar.ownerPhone}</span>
                         </div>
                       )}
                       {selectedCar.ownerAddress && (
@@ -1214,7 +1298,7 @@ export function CarsSection() {
                             Dirección:
                           </span>
                           <span className="text-sm text-right max-w-[200px] break-words">
-                            {selectedCar.ownerAddress}
+                            {selectedCar.ownerPhone}
                           </span>
                         </div>
                       )}
@@ -1255,12 +1339,60 @@ export function CarsSection() {
                   <Card>
                     <CardContent className="p-4">
                       <div className="text-center">
-                        <div className="text-2xl font-bold text-green-600">
+                        <div className="text-2xl font-bold text-red-600">
                           {formatCurrency(
-                            selectedCarWorkHistory.reduce((sum, order) => sum + order.profit, 0),
+                            selectedCarWorkHistory.reduce((sum, order) => sum + order.expenses, 0),
+                          )}
+                        </div>
+                        <div className="text-sm text-muted-foreground">Gastos Totales del Carro</div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Additional Financial Dashboards - Second Row */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Card 
+                    className="hover:shadow-lg transition-all duration-200 hover:scale-105 cursor-pointer"
+                    onClick={handleFinancialDataClick}
+                  >
+                    <CardContent className="p-4">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-600">
+                          {isFinancialDataUnlocked ? (
+                            formatCurrency(
+                              selectedCarWorkHistory.reduce((sum, order) => sum + order.totalCost, 0),
+                            )
+                          ) : (
+                            "••••••••"
+                          )}
+                        </div>
+                        <div className="text-sm text-muted-foreground">Ingresos Totales del Carro</div>
+                        {!isFinancialDataUnlocked && (
+                          <div className="text-xs text-blue-600 mt-1">Click para desbloquear</div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card 
+                    className="hover:shadow-lg transition-all duration-200 hover:scale-105 cursor-pointer"
+                    onClick={handleFinancialDataClick}
+                  >
+                    <CardContent className="p-4">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">
+                          {isFinancialDataUnlocked ? (
+                            formatCurrency(
+                              selectedCarWorkHistory.reduce((sum, order) => sum + order.profit, 0),
+                            )
+                          ) : (
+                            "••••••••"
                           )}
                         </div>
                         <div className="text-sm text-muted-foreground">Ganancias Generadas</div>
+                        {!isFinancialDataUnlocked && (
+                          <div className="text-xs text-green-600 mt-1">Click para desbloquear</div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -1667,6 +1799,71 @@ export function CarsSection() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Financial Data Authentication Modal */}
+      <Dialog open={isAuthModalOpen} onOpenChange={setIsAuthModalOpen}>
+        <DialogContent className="sm:max-w-[425px] mx-4 sm:mx-auto bg-white dark:bg-gray-900">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <div className="p-2 bg-blue-100 rounded-full">
+                <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              </div>
+              Acceso a Datos Financieros
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center">
+                <div className="w-8 h-8 text-blue-600">
+                  <Hash className="w-8 h-8" />
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Los datos financieros están protegidos por contraseña.<br/>
+                Solo personal autorizado puede acceder a esta información.
+              </p>
+
+            </div>
+            
+            <form onSubmit={handleAuthSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="authPassword" className="text-sm font-medium">
+                  Contraseña del Taller
+                </Label>
+                <Input
+                  id="authPassword"
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  placeholder="Ingrese la contraseña"
+                  className="w-full"
+                  autoFocus
+                />
+              </div>
+              
+              {authError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                  <p className="text-sm text-red-600">{authError}</p>
+                </div>
+              )}
+              
+              <div className="flex gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsAuthModalOpen(false)}
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700">
+                  Desbloquear
+                </Button>
+              </div>
+            </form>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

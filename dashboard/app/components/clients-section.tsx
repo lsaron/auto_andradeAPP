@@ -382,7 +382,7 @@ export function ClientsSection() {
                   value={newClient.id_nacional}
                   onChange={(e) => setNewClient({ ...newClient, id_nacional: e.target.value })}
                   className="col-span-3"
-                  placeholder="123456789"
+                  placeholder="Cedula de identidad"
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -394,7 +394,7 @@ export function ClientsSection() {
                   value={newClient.name}
                   onChange={(e) => setNewClient({ ...newClient, name: e.target.value })}
                   className="col-span-3"
-                  placeholder="Juan Pérez"
+                  placeholder="Nombre del cliente"
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -407,7 +407,7 @@ export function ClientsSection() {
                   value={newClient.email}
                   onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
                   className="col-span-3"
-                  placeholder="juan@email.com"
+                  placeholder="email"
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -419,7 +419,7 @@ export function ClientsSection() {
                   value={newClient.phone}
                   onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })}
                   className="col-span-3"
-                  placeholder="+52 555 123 4567"
+                  placeholder="+506 "
                 />
               </div>
               
