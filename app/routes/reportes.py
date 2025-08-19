@@ -37,6 +37,7 @@ def reporte_mensual(mes: int, anio: int, db: Session = Depends(get_db)):
 
     ingresos = sum(float(t.costo) for t in trabajos_mes)
 
+    # Calcular gastos totales (costo real)
     gastos = db.query(func.sum(DetalleGasto.monto))\
         .join(Trabajo)\
         .filter(
@@ -45,8 +46,20 @@ def reporte_mensual(mes: int, anio: int, db: Session = Depends(get_db)):
         ).scalar() or 0
     gastos = float(gastos)
 
+    # Calcular markup total de repuestos
+    markup_query = db.query(
+        func.sum(DetalleGasto.monto_cobrado - DetalleGasto.monto)
+    ).join(Trabajo).filter(
+        func.extract('month', Trabajo.fecha) == mes,
+        func.extract('year', Trabajo.fecha) == anio,
+        DetalleGasto.monto_cobrado.isnot(None),
+        DetalleGasto.monto_cobrado > DetalleGasto.monto
+    ).scalar() or 0
+    markup_total = float(markup_query) if markup_query else 0
+
     iva = round(sum(float(t.costo) * 0.13 for t in trabajos_mes if t.aplica_iva), 2)
-    ganancia_neta = round(ingresos - gastos - iva, 2)
+    # Ganancia incluye markup de repuestos
+    ganancia_neta = round(ingresos - gastos + markup_total - iva, 2)
 
 
     total_clientes = db.query(func.count()).select_from(Cliente).scalar()
@@ -57,6 +70,7 @@ def reporte_mensual(mes: int, anio: int, db: Session = Depends(get_db)):
         "anio": anio,
         "ingresos_totales": ingresos,
         "gastos_totales": gastos,
+        "markup_repuestos": markup_total,
         "iva_calculado": iva,
         "ganancia_neta": ganancia_neta,
         "cantidad_trabajos": cantidad_trabajos,

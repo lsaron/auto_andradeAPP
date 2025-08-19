@@ -4,7 +4,8 @@ from datetime import date
 
 class DetalleGastoSchema(BaseModel):
     descripcion: str
-    monto: float
+    monto: float  # Costo real del repuesto
+    monto_cobrado: Optional[float] = None  # Precio cobrado al cliente (opcional)
 
 class TrabajoSchema(BaseModel):
     matricula_carro: str

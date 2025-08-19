@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.models.database import get_db
 from app.models.mecanicos import Mecanico as MecanicoModel
 from app.models.trabajos_mecanicos import TrabajoMecanico
@@ -181,4 +182,50 @@ def asignar_mecanicos_a_trabajo(
         print(f"❌ API: Tipo de error: {type(e).__name__}")
         import traceback
         traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{mecanico_id}/trabajos")
+def obtener_trabajos_mecanico(
+    mecanico_id: int,
+    db: Session = Depends(get_db)
+):
+    """Obtener todos los trabajos realizados por un mecánico específico"""
+    try:
+        # Verificar que el mecánico existe
+        mecanico = db.query(MecanicoModel).filter(MecanicoModel.id == mecanico_id).first()
+        if not mecanico:
+            raise HTTPException(status_code=404, detail="Mecánico no encontrado")
+        
+        # Obtener los trabajos asignados al mecánico
+        trabajos_mecanico = db.query(TrabajoMecanico).filter(
+            TrabajoMecanico.id_mecanico == mecanico_id
+        ).all()
+        
+        # Obtener los detalles de cada trabajo
+        trabajos_detallados = []
+        for trabajo_mecanico in trabajos_mecanico:
+            trabajo = db.query(Trabajo).filter(Trabajo.id == trabajo_mecanico.id_trabajo).first()
+            if trabajo:
+                # Calcular ganancia base (costo total - gastos reales)
+                gastos_reales = db.query(DetalleGasto).filter(
+                    DetalleGasto.id_trabajo == trabajo.id
+                ).with_entities(func.sum(DetalleGasto.monto)).scalar() or 0
+                
+                ganancia_base = float(trabajo.costo or 0) - float(gastos_reales)
+                
+                trabajo_info = {
+                    "id": trabajo.id,
+                    "fecha": trabajo.fecha.isoformat() if trabajo.fecha else None,
+                    "matricula_carro": trabajo.matricula_carro,
+                    "descripcion": trabajo.descripcion,
+                    "costo": float(trabajo.costo or 0),
+                    "ganancia_base": ganancia_base,
+                    "comision": float(trabajo_mecanico.monto_comision or 0),
+                    "porcentaje_comision": float(trabajo_mecanico.porcentaje_comision or 0)
+                }
+                trabajos_detallados.append(trabajo_info)
+        
+        return trabajos_detallados
+        
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

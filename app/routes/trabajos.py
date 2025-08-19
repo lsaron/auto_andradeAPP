@@ -75,7 +75,8 @@ def crear_trabajo(trabajo: TrabajoSchema, db: Session = Depends(get_db)):
         nuevo_gasto = DetalleGasto(
             id_trabajo=nuevo_trabajo.id,
             descripcion=gasto.descripcion,
-            monto=gasto.monto
+            monto=gasto.monto,
+            monto_cobrado=gasto.monto_cobrado if gasto.monto_cobrado else gasto.monto
         )
         db.add(nuevo_gasto)
 
@@ -117,7 +118,8 @@ def obtener_trabajo(id: int, db: Session = Depends(get_db)):
             {
                 "id": gasto.id,
                 "descripcion": gasto.descripcion,
-                "monto": gasto.monto
+                "monto": gasto.monto,
+                "monto_cobrado": gasto.monto_cobrado
             }
             for gasto in gastos
         ]
@@ -144,7 +146,8 @@ def actualizar_trabajo(id: int, trabajo: TrabajoSchema, db: Session = Depends(ge
         nuevo_gasto = DetalleGasto(
             id_trabajo=id,
             descripcion=gasto.descripcion,
-            monto=gasto.monto
+            monto=gasto.monto,
+            monto_cobrado=gasto.monto_cobrado if gasto.monto_cobrado else gasto.monto
         )
         db.add(nuevo_gasto)
     
@@ -198,7 +201,7 @@ def generar_factura_pdf(id: int, aplicar_iva: bool = True, db: Session = Depends
             "descripcion": trabajo.descripcion,
             "fecha": trabajo.fecha.strftime("%Y-%m-%d"),
             "costo": float(trabajo.costo),
-            "detalle_gastos": [{"descripcion": g.descripcion, "monto": float(g.monto)} for g in gastos]
+            "detalle_gastos": [{"descripcion": g.descripcion, "monto": float(g.monto), "monto_cobrado": float(g.monto_cobrado) if g.monto_cobrado else float(g.monto)} for g in gastos]
         },
         "iva": float(iva),
         "total": float(total)
@@ -229,7 +232,8 @@ def obtener_gastos_trabajo(id: int, db: Session = Depends(get_db)):
         resultado.append({
             "id": gasto.id,
             "descripcion": gasto.descripcion,
-            "monto": float(gasto.monto)
+            "monto": float(gasto.monto),
+            "monto_cobrado": float(gasto.monto_cobrado) if gasto.monto_cobrado else float(gasto.monto)
         })
     
     return resultado

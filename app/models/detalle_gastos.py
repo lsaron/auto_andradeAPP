@@ -9,6 +9,7 @@ class DetalleGasto(Base):
     id = Column(Integer, primary_key=True, index=True)
     id_trabajo = Column(Integer, ForeignKey("trabajos.id", ondelete="CASCADE"), nullable=False)
     descripcion = Column(String(255), nullable=False)
-    monto = Column(DECIMAL(10, 2), nullable=False)  # Cambiado a DECIMAL para coincidir con la BD
+    monto = Column(DECIMAL(10, 2), nullable=False)  # Costo real del repuesto
+    monto_cobrado = Column(DECIMAL(10, 2), nullable=True)  # Precio cobrado al cliente
 
     trabajo = relationship("Trabajo", back_populates="detalle_gastos")

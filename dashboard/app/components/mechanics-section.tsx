@@ -41,6 +41,7 @@ export function MechanicsSection() {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isJobsDialogOpen, setIsJobsDialogOpen] = useState(false)
   const [selectedMechanic, setSelectedMechanic] = useState<Mechanic | null>(null)
   const [newMechanic, setNewMechanic] = useState<MechanicCreate & { id_number?: string }>({
     name: "",
@@ -49,6 +50,34 @@ export function MechanicsSection() {
   const [editMechanic, setEditMechanic] = useState<MechanicCreate>({
     name: "",
   })
+  type MechanicJob = {
+    fecha: string
+    matricula_carro: string
+    descripcion: string
+    costo: number
+    ganancia_base?: number
+    comision?: number
+  }
+  
+  const [mechanicJobs, setMechanicJobs] = useState<MechanicJob[]>([])
+  const [loadingJobs, setLoadingJobs] = useState(false)
+  const [selectedYear, setSelectedYear] = useState<string>("")
+  const [selectedMonth, setSelectedMonth] = useState<string>("")
+  const [availableYears, setAvailableYears] = useState<string[]>([])
+  const [availableMonths] = useState([
+    { value: "01", label: "Enero" },
+    { value: "02", label: "Febrero" },
+    { value: "03", label: "Marzo" },
+    { value: "04", label: "Abril" },
+    { value: "05", label: "Mayo" },
+    { value: "06", label: "Junio" },
+    { value: "07", label: "Julio" },
+    { value: "08", label: "Agosto" },
+    { value: "09", label: "Septiembre" },
+    { value: "10", label: "Octubre" },
+    { value: "11", label: "Noviembre" },
+    { value: "12", label: "Diciembre" }
+  ])
 
   // Cargar mecánicos desde la API
   useEffect(() => {
@@ -271,6 +300,135 @@ export function MechanicsSection() {
     setIsDeleteDialogOpen(true)
   }, [])
 
+  const openJobsDialog = useCallback(async (mechanic: Mechanic) => {
+    setSelectedMechanic(mechanic)
+    setIsJobsDialogOpen(true)
+    setLoadingJobs(true)
+    
+    try {
+      // Obtener los trabajos del mecánico desde la API
+      console.log(`🔍 Obteniendo trabajos para mecánico ${mechanic.id} (${mechanic.name})`)
+      const response = await fetch(`http://localhost:8000/mecanicos/${mechanic.id}/trabajos`)
+      console.log(`🔍 Response status: ${response.status}`)
+      
+      if (response.ok) {
+        const jobsData = await response.json()
+        console.log(`🔍 Trabajos obtenidos:`, jobsData)
+        setMechanicJobs(jobsData)
+        
+        if (jobsData.length > 0) {
+          console.log(`🔍 Procesando ${jobsData.length} trabajos`)
+          
+          // Extraer años únicos de los trabajos para el filtro
+          const years = [...new Set(jobsData.map((job: any) => 
+            new Date(job.fecha as string).getFullYear().toString()
+          ))].sort((a, b) => parseInt(b) - parseInt(a)) as string[]
+          console.log(`🔍 Años disponibles:`, years)
+          setAvailableYears(years)
+          
+          // Establecer el año más reciente por defecto
+          if (years.length > 0) {
+            const mostRecentYear = years[0]
+            console.log(`🔍 Año más reciente:`, mostRecentYear)
+            setSelectedYear(mostRecentYear)
+            
+            // Extraer meses disponibles para el año seleccionado
+            const monthsForYear = [...new Set(jobsData
+              .filter((job: any) => new Date(job.fecha as string).getFullYear().toString() === mostRecentYear)
+              .map((job: any) => (new Date(job.fecha as string).getMonth() + 1).toString().padStart(2, '0'))
+            )].sort((a, b) => parseInt(a) - parseInt(b)) as string[]
+            console.log(`🔍 Meses disponibles para ${mostRecentYear}:`, monthsForYear)
+            
+            // Establecer el mes más reciente del año seleccionado por defecto
+            if (monthsForYear.length > 0) {
+              const mostRecentMonth = monthsForYear[monthsForYear.length - 1]
+              console.log(`🔍 Mes más reciente:`, mostRecentMonth)
+              setSelectedMonth(mostRecentMonth)
+            } else {
+              console.log(`🔍 No hay meses disponibles`)
+              setSelectedMonth("")
+            }
+          } else {
+            console.log(`🔍 No hay años disponibles`)
+            setSelectedYear("")
+            setSelectedMonth("")
+          }
+        } else {
+          console.log(`🔍 No hay trabajos disponibles`)
+          // Si no hay trabajos, limpiar filtros
+          setAvailableYears([])
+          setSelectedYear("")
+          setSelectedMonth("")
+        }
+      } else {
+        const errorText = await response.text()
+        console.error(`❌ Error al obtener trabajos del mecánico: ${response.status} - ${errorText}`)
+        setMechanicJobs([])
+        setAvailableYears([])
+        setSelectedYear("")
+        setSelectedMonth("")
+      }
+    } catch (error) {
+      console.error("Error al obtener trabajos del mecánico:", error)
+      setMechanicJobs([])
+      setAvailableYears([])
+      setSelectedYear("")
+      setSelectedMonth("")
+    } finally {
+      setLoadingJobs(false)
+    }
+  }, [])
+
+  // Filtrar trabajos por año y mes seleccionados
+  const filteredJobs = useMemo(() => {
+    console.log(`🔍 Filtrando trabajos:`, {
+      totalJobs: mechanicJobs.length,
+      selectedYear,
+      selectedMonth,
+      availableYears
+    })
+    
+    const filtered = mechanicJobs.filter((job) => {
+      try {
+        const jobDate = new Date(job.fecha as string)
+        const jobYear = jobDate.getFullYear().toString()
+        const jobMonth = (jobDate.getMonth() + 1).toString().padStart(2, '0')
+        
+        // Si solo hay año seleccionado, filtrar por año
+        if (selectedYear && !selectedMonth) {
+          const matches = jobYear === selectedYear
+          console.log(`🔍 Trabajo ${job.matricula_carro} - Año: ${jobYear}, Filtro: ${selectedYear}, Coincide: ${matches}`)
+          return matches
+        }
+        
+        // Si solo hay mes seleccionado, filtrar por mes del año actual
+        if (!selectedYear && selectedMonth) {
+          const currentYear = new Date().getFullYear().toString()
+          const matches = jobYear === currentYear && jobMonth === selectedMonth
+          console.log(`🔍 Trabajo ${job.matricula_carro} - Año: ${jobYear}, Mes: ${jobMonth}, Filtro: ${selectedMonth}, Coincide: ${matches}`)
+          return matches
+        }
+        
+        // Si hay ambos, filtrar por año y mes
+        if (selectedYear && selectedMonth) {
+          const matches = jobYear === selectedYear && jobMonth === selectedMonth
+          console.log(`🔍 Trabajo ${job.matricula_carro} - Año: ${jobYear}, Mes: ${jobMonth}, Filtros: ${selectedYear}/${selectedMonth}, Coincide: ${matches}`)
+          return matches
+        }
+        
+        // Si no hay filtros, mostrar todos
+        console.log(`🔍 Trabajo ${job.matricula_carro} - Sin filtros, mostrando`)
+        return true
+      } catch (error) {
+        console.error("Error al procesar fecha del trabajo:", error)
+        return false
+      }
+    })
+    
+    console.log(`🔍 Trabajos filtrados: ${filtered.length} de ${mechanicJobs.length}`)
+    return filtered
+  }, [mechanicJobs, selectedYear, selectedMonth, availableYears])
+
   if (loading && mechanics.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -452,6 +610,14 @@ export function MechanicsSection() {
                         <Button
                           variant="ghost"
                           size="sm"
+                          className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700"
+                          onClick={() => openJobsDialog(mechanic)}
+                        >
+                          <Wrench className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
                           onClick={() => openDeleteDialog(mechanic)}
                         >
@@ -599,6 +765,176 @@ export function MechanicsSection() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Jobs Dialog */}
+      <Dialog open={isJobsDialogOpen} onOpenChange={setIsJobsDialogOpen}>
+        <DialogContent className="bg-white max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">Trabajos del Mecánico</DialogTitle>
+            <DialogDescription>
+              Lista de todos los trabajos realizados por este mecánico
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedMechanic && (
+            <div className="space-y-6">
+              {/* Información del mecánico */}
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">Nombre</p>
+                    <p className="text-lg font-semibold text-blue-700">{selectedMechanic.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">ID del Mecánico</p>
+                    <p className="text-lg font-mono text-blue-700">#{selectedMechanic.mechanic_id}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">Trabajos Completados</p>
+                    <p className="text-lg font-semibold text-blue-700">
+                      {selectedMechanic.jobs_completed || 0}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+                             {/* Lista de trabajos */}
+               <div className="space-y-4">
+                 {/* Filtros de año y mes */}
+                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                   <h3 className="text-lg font-semibold text-gray-900">
+                     Trabajos Realizados 
+                     {filteredJobs.length !== mechanicJobs.length && (
+                       <span className="text-sm font-normal text-gray-500 ml-2">
+                         ({filteredJobs.length} de {mechanicJobs.length})
+                       </span>
+                     )}
+                   </h3>
+                   
+                   <div className="flex flex-col sm:flex-row gap-3">
+                     {/* Filtro de año */}
+                     <div className="flex flex-col gap-1">
+                       <Label htmlFor="year-filter" className="text-sm font-medium text-gray-700">
+                         Año
+                       </Label>
+                       <select
+                         id="year-filter"
+                         value={selectedYear}
+                         onChange={(e) => setSelectedYear(e.target.value)}
+                         className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                       >
+                         <option value="">Todos los años</option>
+                         {availableYears.map((year) => (
+                           <option key={year} value={year}>
+                             {year}
+                           </option>
+                         ))}
+                       </select>
+                     </div>
+                     
+                     {/* Filtro de mes */}
+                     <div className="flex flex-col gap-1">
+                       <Label htmlFor="month-filter" className="text-sm font-medium text-gray-700">
+                         Mes
+                       </Label>
+                       <select
+                         id="month-filter"
+                         value={selectedMonth}
+                         onChange={(e) => setSelectedMonth(e.target.value)}
+                         className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                       >
+                         <option value="">Todos los meses</option>
+                         {availableMonths.map((month) => (
+                           <option key={month.value} value={month.value}>
+                             {month.label}
+                           </option>
+                         ))}
+                                                </select>
+                       </div>
+                       
+                       {/* Botón para limpiar filtros */}
+                       <div className="flex items-end">
+                         <Button
+                           variant="outline"
+                           size="sm"
+                           onClick={() => {
+                             setSelectedYear("")
+                             setSelectedMonth("")
+                           }}
+                           className="px-3 py-2 h-[42px]"
+                         >
+                           Limpiar Filtros
+                         </Button>
+                       </div>
+                     </div>
+                   </div>
+                
+                {loadingJobs ? (
+                  <div className="flex items-center justify-center py-8">
+                    <LoadingSpinner size="lg" />
+                    <span className="ml-3 text-lg">Cargando trabajos...</span>
+                  </div>
+                                 ) : filteredJobs.length > 0 ? (
+                  <div className="border rounded-lg overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead>Matrícula</TableHead>
+                          <TableHead>Descripción</TableHead>
+                          <TableHead className="text-right">Monto Total</TableHead>
+                          <TableHead className="text-right">Ganancia Base</TableHead>
+                          <TableHead className="text-right">Comisión</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                                                 {filteredJobs.map((job, index) => (
+                          <TableRow key={index}>
+                            <TableCell>
+                              {new Date(job.fecha).toLocaleDateString('es-CR')}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{job.matricula_carro}</Badge>
+                            </TableCell>
+                            <TableCell className="max-w-xs truncate">
+                              {job.descripcion}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              ₡{Number(job.costo).toLocaleString('es-CR')}
+                            </TableCell>
+                            <TableCell className="text-right font-medium text-green-600">
+                              ₡{Number(job.ganancia_base || 0).toLocaleString('es-CR')}
+                            </TableCell>
+                            <TableCell className="text-right font-medium text-blue-600">
+                              ₡{Number(job.comision || 0).toLocaleString('es-CR')}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                                 ) : (
+                   <div className="text-center py-8 text-muted-foreground">
+                     <Wrench className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                     <p className="text-lg">
+                       {mechanicJobs.length === 0 
+                         ? "No hay trabajos registrados para este mecánico"
+                         : `No hay trabajos en ${availableMonths.find(m => m.value === selectedMonth)?.label || 'este mes'} de ${selectedYear}`
+                       }
+                     </p>
+                   </div>
+                 )}
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsJobsDialogOpen(false)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
