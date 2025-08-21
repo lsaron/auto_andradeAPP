@@ -77,7 +77,8 @@ interface WorkOrder {
 interface WorkOrderPart {
   id: string
   name: string
-  cost: number
+  cost: number // Costo real
+  costCharged: number // Precio cobrado al cliente
   quantity: number
 }
 
@@ -106,12 +107,7 @@ export function CarsSection() {
   const [error, setError] = useState<Error | null>(null)
   const [totalCars, setTotalCars] = useState(0)
 
-  // Financial data protection states
-  const [isFinancialDataUnlocked, setIsFinancialDataUnlocked] = useState(false)
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
-  const [authPassword, setAuthPassword] = useState("")
-  const [authError, setAuthError] = useState("")
-  const [adminUsername] = useState("leonardo") // Usuario fijo del administrador
+
 
   // Update the cars state initialization
   const [cars, setCars] = useState<Car[]>([])
@@ -133,8 +129,11 @@ export function CarsSection() {
         throw new Error(`Error ${res.status}: ${res.statusText}`)
       }
       const data = await res.json()
+      console.log("🔍 Datos del backend para carro:", matricula, data)
       
-      const trabajos: WorkOrder[] = (data.historial_trabajos || []).map((t: any) => ({
+      const trabajos: WorkOrder[] = (data.historial_trabajos || []).map((t: any) => {
+        console.log("🔍 Trabajo:", t.id, "Gastos:", t.gastos)
+        return {
         id: `WO-${t.id}`,
         carId: matricula,
         licensePlate: matricula,
@@ -144,14 +143,19 @@ export function CarsSection() {
         expenses: (t.gastos || []).reduce((acc: number, g: any) => acc + g.monto, 0),
         profit: t.costo - (t.gastos || []).reduce((acc: number, g: any) => acc + g.monto, 0),
         date: t.fecha,
-        parts: (t.gastos || []).map((g: any) => ({
-          id: `G-${g.id}`,
-          name: g.descripcion,
-          cost: g.monto,
-          quantity: 1,
-        })),
+        parts: (t.gastos || []).map((g: any) => {
+          console.log("🔍 Gasto:", g.descripcion, "monto:", g.monto, "monto_cobrado:", g.monto_cobrado)
+          return {
+            id: `G-${g.id}`,
+            name: g.descripcion,
+            cost: g.monto, // Costo real
+            costCharged: g.monto_cobrado || g.monto, // Precio cobrado al cliente (si no hay, usar el costo real)
+            quantity: 1,
+          }
+        }),
         invoiceGenerated: false,
-      }))
+              }
+      })
       setSelectedCarWorkHistory(trabajos)
     } catch (e) {
       console.error("❌ Error al cargar historial:", e)
@@ -180,6 +184,10 @@ export function CarsSection() {
     ownerId: "",
     mileage: "",
   })
+
+  // Estados para modales de detalles financieros
+  const [isExpensesDetailModalOpen, setIsExpensesDetailModalOpen] = useState(false)
+  const [isProfitDetailModalOpen, setIsProfitDetailModalOpen] = useState(false)
 
   const handleAddCar = async () => {
   if (
@@ -225,13 +233,13 @@ export function CarsSection() {
       })
       setIsNewCarModalOpen(false)
     } catch (error: any) {
-      console.error("Error al registrar vehículo:", error)
-      alert(error.message || "Error inesperado")
+              console.error("Error al registrar vehículo:", error)
+        alert(error.message || "Error inesperado")
+      }
+    } else {
+      alert("Por favor, completá todos los campos obligatorios.")
     }
-  } else {
-    alert("Por favor, completá todos los campos obligatorios.")
   }
-}
 
   const loadOwners = async () => {
   try {
@@ -540,55 +548,9 @@ export function CarsSection() {
     setIsSearching(false)
   }
 
-  // Financial data authentication
-  const handleFinancialDataClick = () => {
-    if (!isFinancialDataUnlocked) {
-      setIsAuthModalOpen(true)
-      setAuthPassword("")
-      setAuthError("")
-    }
-  }
 
-  const handleAuthSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    try {
-      console.log("🔐 Iniciando autenticación...")
-      console.log("🔐 Username:", adminUsername)
-      console.log("🔐 URL de autenticación: http://localhost:8000/api/auth")
-      
-      // Llamar a la API de autenticación del backend
-      const response = await fetch('http://localhost:8000/api/auth', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username: adminUsername, // Usuario fijo para el taller
-          password: authPassword
-        })
-      })
 
-              console.log("🔐 Response status:", response.status)
-        console.log("🔐 Response headers:", response.headers)
-        
-        const data = await response.json()
-        console.log("🔐 Response data:", data)
 
-        if (data.success) {
-        setIsFinancialDataUnlocked(true)
-        setIsAuthModalOpen(false)
-        setAuthPassword("")
-        setAuthError("")
-        console.log("🔐 Autenticación exitosa:", data.nombre_completo)
-      } else {
-        setAuthError(data.message || "Error de autenticación")
-      }
-    } catch (error) {
-      console.error("🔐 Error en autenticación:", error)
-      setAuthError("Error de conexión. Intente nuevamente.")
-    }
-  }
 
   // Add useEffect to initialize filtered cars and handle search
   useEffect(() => {
@@ -600,8 +562,6 @@ export function CarsSection() {
   useEffect(() => {
     if (selectedCar) {
       loadCarWorkHistory(selectedCar.licensePlate)
-      // Reset financial data access when switching cars
-      setIsFinancialDataUnlocked(false)
     }
   }, [selectedCar])
 
@@ -1336,7 +1296,10 @@ export function CarsSection() {
                       </div>
                     </CardContent>
                   </Card>
-                  <Card>
+                  <Card
+                    className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105"
+                    onClick={() => setIsExpensesDetailModalOpen(true)}
+                  >
                     <CardContent className="p-4">
                       <div className="text-center">
                         <div className="text-2xl font-bold text-red-600">
@@ -1345,6 +1308,7 @@ export function CarsSection() {
                           )}
                         </div>
                         <div className="text-sm text-muted-foreground">Gastos Totales del Carro</div>
+                        <div className="text-xs text-red-600 mt-1">Click para ver detalles</div>
                       </div>
                     </CardContent>
                   </Card>
@@ -1352,47 +1316,44 @@ export function CarsSection() {
 
                 {/* Additional Financial Dashboards - Second Row */}
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Card 
-                    className="hover:shadow-lg transition-all duration-200 hover:scale-105 cursor-pointer"
-                    onClick={handleFinancialDataClick}
-                  >
+                  <Card className="hover:shadow-lg transition-all duration-200">
                     <CardContent className="p-4">
                       <div className="text-center">
                         <div className="text-2xl font-bold text-blue-600">
-                          {isFinancialDataUnlocked ? (
-                            formatCurrency(
-                              selectedCarWorkHistory.reduce((sum, order) => sum + order.totalCost, 0),
-                            )
-                          ) : (
-                            "••••••••"
+                          {formatCurrency(
+                            selectedCarWorkHistory.reduce((sum, order) => sum + order.totalCost, 0),
                           )}
                         </div>
                         <div className="text-sm text-muted-foreground">Ingresos Totales del Carro</div>
-                        {!isFinancialDataUnlocked && (
-                          <div className="text-xs text-blue-600 mt-1">Click para desbloquear</div>
-                        )}
                       </div>
                     </CardContent>
                   </Card>
                   <Card 
-                    className="hover:shadow-lg transition-all duration-200 hover:scale-105 cursor-pointer"
-                    onClick={handleFinancialDataClick}
+                    className="cursor-pointer hover:shadow-lg transition-all duration-200 hover:scale-105"
+                    onClick={() => setIsProfitDetailModalOpen(true)}
                   >
                     <CardContent className="p-4">
                       <div className="text-center">
                         <div className="text-2xl font-bold text-green-600">
-                          {isFinancialDataUnlocked ? (
-                            formatCurrency(
-                              selectedCarWorkHistory.reduce((sum, order) => sum + order.profit, 0),
-                            )
-                          ) : (
-                            "••••••••"
+                          {formatCurrency(
+                            selectedCarWorkHistory.reduce((sum, order) => {
+                              // Calcular ganancia total incluyendo markup de repuestos
+                              const gastosReales = order.expenses;
+                                                      const gastosCobrados = order.parts?.reduce((total, part) => {
+                          // Usar el precio real cobrado al cliente del backend
+                          return total + (part.costCharged * part.quantity);
+                        }, 0) || gastosReales;
+                              
+                              const gananciaRepuestos = gastosCobrados - gastosReales;
+                              const gananciaBase = order.totalCost - gastosReales;
+                              const gananciaTotal = gananciaBase + gananciaRepuestos;
+                              
+                              return sum + gananciaTotal;
+                            }, 0),
                           )}
                         </div>
                         <div className="text-sm text-muted-foreground">Ganancias Generadas</div>
-                        {!isFinancialDataUnlocked && (
-                          <div className="text-xs text-green-600 mt-1">Click para desbloquear</div>
-                        )}
+                        <div className="text-xs text-green-600 mt-1">Click para ver desglose</div>
                       </div>
                     </CardContent>
                   </Card>
@@ -1419,9 +1380,9 @@ export function CarsSection() {
                               </p>
                             </div>
                             <div className="text-right space-y-1">
-                              <div className="text-xl font-bold text-green-600">{formatCurrency(order.totalCost)}</div>
+                              <div className="text-xl font-bold text-blue-600">{formatCurrency(order.totalCost)}</div>
                               <div className="text-xs text-muted-foreground">
-                                Ganancia: {formatCurrency(order.profit)}
+                                Ganancia Base: {formatCurrency(order.totalCost - order.expenses)}
                               </div>
                               <Button
                                 size="sm"
@@ -1442,35 +1403,56 @@ export function CarsSection() {
                             </div>
 
                             <div>
-                              <span className="text-sm font-medium">Gastos Totales:</span>
+                              <span className="text-sm font-medium">Gastos Reales:</span>
                               <p className="text-sm font-semibold text-red-600">{formatCurrency(order.expenses)}</p>
                             </div>
 
                             {order.parts && order.parts.length > 0 && (
                               <div>
-                                <span className="text-sm font-medium">Repuestos y Costos:</span>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-sm font-medium">Repuestos y Costos:</span>
+                                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                    <span className="flex items-center gap-1">
+                                      <div className="w-3 h-3 bg-red-600 rounded"></div>
+                                      Costo Real
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <div className="w-3 h-3 bg-green-600 rounded"></div>
+                                      Precio Cliente
+                                    </span>
+                                  </div>
+                                </div>
                                 <div className="mt-2 space-y-2">
-                                  {order.parts.map((part) => (
-                                    <div
-                                      key={part.id}
-                                      className="flex justify-between items-center p-2 bg-gray-50 rounded"
-                                    >
-                                      <div className="flex-1">
-                                        <span className="text-sm font-medium">{part.name}</span>
-                                        <span className="text-xs text-muted-foreground ml-2">x{part.quantity}</span>
+                                  {order.parts.map((part) => {
+                                    const costoReal = part.cost * part.quantity;
+                                    const precioCobrado = part.costCharged * part.quantity; // Usar el precio real del backend
+                                    return (
+                                      <div
+                                        key={part.id}
+                                        className="flex justify-between items-center p-2 bg-gray-50 rounded"
+                                      >
+                                        <div className="flex-1">
+                                          <span className="text-sm font-medium">{part.name}</span>
+                                          <span className="text-xs text-muted-foreground ml-2">x{part.quantity}</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                          <span className="text-sm text-red-600">
+                                            {formatCurrency(costoReal)}
+                                          </span>
+                                          <span className="text-sm font-semibold text-green-600">
+                                            {formatCurrency(precioCobrado)}
+                                          </span>
+                                        </div>
                                       </div>
-                                      <span className="text-sm font-semibold">
-                                        {formatCurrency(part.cost * part.quantity)}
-                                      </span>
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               </div>
                             )}
 
                             <div className="grid gap-2 sm:grid-cols-2 text-xs text-muted-foreground pt-2 border-t">
-                              <div>Total Gastos: {formatCurrency(order.expenses)}</div>
-                              <div>Ganancia Neta: {formatCurrency(order.profit)}</div>
+                              <div>Gastos Reales: {formatCurrency(order.expenses)}</div>
+                              <div>Ganancia Base: {formatCurrency(order.totalCost - order.expenses)}</div>
                             </div>
                           </div>
                         </CardContent>
@@ -1514,6 +1496,8 @@ export function CarsSection() {
                 Total de trabajos: {selectedCarWorkHistory.length}
               </div>
 
+
+
               {selectedCarWorkHistory.length > 0 ? (
                 <div className="space-y-4 max-h-96 overflow-y-auto">
                   {selectedCarWorkHistory.map((order) => (
@@ -1529,8 +1513,15 @@ export function CarsSection() {
                           </div>
                           <div className="text-right space-y-1">
                             <div className="text-xl font-bold text-green-600">{formatCurrency(order.totalCost)}</div>
-                            <div className="text-xs text-muted-foreground">
-                              Ganancia: {formatCurrency(order.profit)}
+                            <div className="text-xs text-gray-600">
+                              Ganancia Base: {formatCurrency(order.totalCost - order.expenses)}
+                            </div>
+                            <div className="text-xs text-blue-600">
+                              Ganancia: {formatCurrency((order.totalCost - order.expenses) + (order.parts?.reduce((total, part) => {
+                                const costoReal = part.cost * part.quantity;
+                                const precioCobrado = part.costCharged * part.quantity;
+                                return total + (precioCobrado - costoReal);
+                              }, 0) || 0))}
                             </div>
                             <Button
                               size="sm"
@@ -1551,28 +1542,63 @@ export function CarsSection() {
                           </div>
 
                           <div>
-                            <span className="text-sm font-medium">Gastos Totales:</span>
-                            <p className="text-sm font-semibold text-red-600">{formatCurrency(order.expenses)}</p>
+                            <span className="text-sm font-medium">Gastos:</span>
+                            <div className="flex gap-4 mt-1">
+                              <div>
+                                <span className="text-xs text-muted-foreground">Real:</span>
+                                <p className="text-sm font-semibold text-red-600">{formatCurrency(order.expenses)}</p>
+                              </div>
+                              <div>
+                                <span className="text-xs text-muted-foreground">Cobrado:</span>
+                                <p className="text-sm font-semibold text-green-600">
+                                  {formatCurrency(order.parts?.reduce((total, part) => {
+                                    return total + (part.costCharged * part.quantity);
+                                  }, 0) || order.expenses)}
+                                </p>
+                              </div>
+                            </div>
                           </div>
 
                           {order.parts && order.parts.length > 0 && (
                             <div>
-                              <span className="text-sm font-medium">Repuestos y Costos:</span>
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium">Repuestos y Costos:</span>
+                                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                  <span className="flex items-center gap-1">
+                                    <div className="w-3 h-3 bg-red-600 rounded"></div>
+                                    Costo Real
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <div className="w-3 h-3 bg-green-600 rounded"></div>
+                                    Precio Cliente
+                                  </span>
+                                </div>
+                              </div>
                               <div className="mt-2 space-y-2">
-                                {order.parts.map((part) => (
-                                  <div
-                                    key={part.id}
-                                    className="flex justify-between items-center p-2 bg-gray-50 rounded"
-                                  >
-                                    <div className="flex-1">
-                                      <span className="text-sm font-medium">{part.name}</span>
-                                      <span className="text-xs text-muted-foreground ml-2">x{part.quantity}</span>
+                                {order.parts.map((part) => {
+                                  const costoReal = part.cost * part.quantity;
+                                  const precioCobrado = part.costCharged * part.quantity;
+                                  const profit = precioCobrado - costoReal;
+                                  return (
+                                    <div
+                                      key={part.id}
+                                      className="flex justify-between items-center p-2 bg-gray-50 rounded"
+                                    >
+                                      <div className="flex-1">
+                                        <span className="text-sm font-medium">{part.name}</span>
+                                        <span className="text-xs text-muted-foreground ml-2">x{part.quantity}</span>
+                                      </div>
+                                                                              <div className="flex items-center gap-3">
+                                          <span className="text-sm text-red-600">
+                                            {formatCurrency(costoReal)}
+                                          </span>
+                                          <span className="text-sm font-semibold text-green-600">
+                                            {formatCurrency(precioCobrado)}
+                                          </span>
+                                        </div>
                                     </div>
-                                    <span className="text-sm font-semibold">
-                                      {formatCurrency(part.cost * part.quantity)}
-                                    </span>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             </div>
                           )}
@@ -1800,70 +1826,149 @@ export function CarsSection() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Financial Data Authentication Modal */}
-      <Dialog open={isAuthModalOpen} onOpenChange={setIsAuthModalOpen}>
-        <DialogContent className="sm:max-w-[425px] mx-4 sm:mx-auto bg-white dark:bg-gray-900">
+      {/* Modal de Detalles de Gastos */}
+      <Dialog open={isExpensesDetailModalOpen} onOpenChange={setIsExpensesDetailModalOpen}>
+        <DialogContent className="max-w-2xl mx-4 sm:mx-auto bg-white dark:bg-gray-900">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              <div className="p-2 bg-blue-100 rounded-full">
-                <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <div className="p-2 bg-red-100 rounded-full">
+                <div className="w-6 h-6 text-red-600">
+                  <Hash className="w-6 h-6" />
+                </div>
               </div>
-              Acceso a Datos Financieros
+              Detalles de Gastos - {selectedCar?.licensePlate}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="text-center">
-              <div className="w-16 h-16 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center">
-                <div className="w-8 h-8 text-blue-600">
-                  <Hash className="w-8 h-8" />
-                </div>
-              </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                Los datos financieros están protegidos por contraseña.<br/>
-                Solo personal autorizado puede acceder a esta información.
-              </p>
 
+          <div className="space-y-6 py-4">
+            {/* Resumen General */}
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Card className="bg-red-50 border-red-200">
+                <CardContent className="p-4 text-center">
+                  <div className="text-2xl font-bold text-red-600">
+                    {formatCurrency(
+                      selectedCarWorkHistory.reduce((sum, order) => sum + order.expenses, 0)
+                    )}
+                  </div>
+                  <div className="text-sm text-red-700">Gastos Reales</div>
+                </CardContent>
+              </Card>
+              
+              <Card className="bg-blue-50 border-blue-200">
+                <CardContent className="p-4 text-center">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {formatCurrency(
+                      selectedCarWorkHistory.reduce((sum, order) => {
+                        const gastosCobrados = order.parts?.reduce((total, part) => {
+                          // Usar el precio real cobrado al cliente del backend
+                          return total + (part.costCharged * part.quantity);
+                        }, 0) || order.expenses;
+                        return sum + gastosCobrados;
+                      }, 0)
+                    )}
+                  </div>
+                  <div className="text-sm text-blue-700">Gastos Cobrados</div>
+                </CardContent>
+              </Card>
+              
+              <Card className="bg-green-50 border-green-200">
+                <CardContent className="p-4 text-center">
+                  <div className="text-2xl font-bold text-green-600">
+                    {formatCurrency(
+                      selectedCarWorkHistory.reduce((sum, order) => {
+                        const gastosReales = order.expenses;
+                        const gastosCobrados = order.parts?.reduce((total, part) => {
+                          // Usar el precio real cobrado al cliente del backend
+                          return total + (part.costCharged * part.quantity);
+                        }, 0) || gastosReales;
+                        const gananciaRepuestos = gastosCobrados - gastosReales;
+                        return sum + gananciaRepuestos;
+                      }, 0)
+                    )}
+                  </div>
+                  <div className="text-sm text-green-700">Ganancia Repuestos</div>
+                </CardContent>
+              </Card>
             </div>
-            
-            <form onSubmit={handleAuthSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="authPassword" className="text-sm font-medium">
-                  Contraseña del Taller
-                </Label>
-                <Input
-                  id="authPassword"
-                  type="password"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  placeholder="Ingrese la contraseña"
-                  className="w-full"
-                  autoFocus
-                />
-              </div>
-              
-              {authError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-md">
-                  <p className="text-sm text-red-600">{authError}</p>
-                </div>
-              )}
-              
-              <div className="flex gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsAuthModalOpen(false)}
-                  className="flex-1"
-                >
-                  Cancelar
-                </Button>
-                <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700">
-                  Desbloquear
-                </Button>
-              </div>
-            </form>
+
+
+          </div>
+
+          <div className="flex justify-end pt-4 border-t">
+            <Button variant="outline" onClick={() => setIsExpensesDetailModalOpen(false)}>
+              Cerrar
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Detalles de Ganancias */}
+      <Dialog open={isProfitDetailModalOpen} onOpenChange={setIsProfitDetailModalOpen}>
+        <DialogContent className="max-w-2xl mx-4 sm:mx-auto bg-white dark:bg-gray-900">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <div className="p-2 bg-green-100 rounded-full">
+                <div className="w-6 h-6 text-green-600">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+              </div>
+              Detalles de Ganancias - {selectedCar?.licensePlate}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Resumen General */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Card className="bg-blue-50 border-blue-200">
+                <CardContent className="p-4 text-center">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {formatCurrency(
+                      selectedCarWorkHistory.reduce((sum, order) => {
+                        const gastosReales = order.expenses;
+                        const gananciaBase = order.totalCost - gastosReales;
+                        return sum + gananciaBase;
+                      }, 0)
+                    )}
+                  </div>
+                  <div className="text-sm text-blue-700">Ganancia Base</div>
+                  <div className="text-xs text-blue-600 mt-1">Mano de Obra - Gastos Reales</div>
+                </CardContent>
+              </Card>
+              
+              <Card className="bg-green-50 border-green-200">
+                <CardContent className="p-4 text-center">
+                  <div className="text-2xl font-bold text-green-600">
+                    {formatCurrency(
+                      selectedCarWorkHistory.reduce((sum, order) => {
+                        const gastosReales = order.expenses;
+                        const gastosCobrados = order.parts?.reduce((total, part) => {
+                          // Usar el precio real cobrado al cliente del backend
+                          return total + (part.costCharged * part.quantity);
+                        }, 0) || gastosReales;
+                        const gananciaRepuestos = gastosCobrados - gastosReales;
+                        const gananciaBase = order.totalCost - gastosReales;
+                        const gananciaTotal = gananciaBase + gananciaRepuestos;
+                        return sum + gananciaTotal;
+                      }, 0)
+                    )}
+                  </div>
+                  <div className="text-sm text-green-700">Ganancia Total</div>
+                  <div className="text-xs text-green-600 mt-1">Ganacia Base + Ganancia Repuestos</div>
+                </CardContent>
+              </Card>
+            </div>
+
+
+          </div>
+
+          <div className="flex justify-end pt-4 border-t">
+            <Button variant="outline" onClick={() => setIsProfitDetailModalOpen(false)}>
+              Cerrar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   )
 }

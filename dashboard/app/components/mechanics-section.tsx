@@ -307,52 +307,36 @@ export function MechanicsSection() {
     
     try {
       // Obtener los trabajos del mecánico desde la API
+      const url = `http://localhost:8000/api/mecanicos/${mechanic.id}/trabajos`
       console.log(`🔍 Obteniendo trabajos para mecánico ${mechanic.id} (${mechanic.name})`)
-      const response = await fetch(`http://localhost:8000/mecanicos/${mechanic.id}/trabajos`)
+      console.log(`🔍 URL de la API: ${url}`)
+      const response = await fetch(url)
       console.log(`🔍 Response status: ${response.status}`)
+      console.log(`🔍 Response headers:`, response.headers)
       
       if (response.ok) {
         const jobsData = await response.json()
         console.log(`🔍 Trabajos obtenidos:`, jobsData)
+        console.log(`🔍 Tipo de datos:`, typeof jobsData)
+        console.log(`🔍 Es array:`, Array.isArray(jobsData))
+        console.log(`🔍 Longitud:`, jobsData?.length || 0)
         setMechanicJobs(jobsData)
         
         if (jobsData.length > 0) {
           console.log(`🔍 Procesando ${jobsData.length} trabajos`)
           
           // Extraer años únicos de los trabajos para el filtro
-          const years = [...new Set(jobsData.map((job: any) => 
+          const yearsSet = new Set<string>(jobsData.map((job: any) => 
             new Date(job.fecha as string).getFullYear().toString()
-          ))].sort((a, b) => parseInt(b) - parseInt(a)) as string[]
+          ))
+          const years = Array.from(yearsSet).sort((a: string, b: string) => parseInt(b) - parseInt(a))
           console.log(`🔍 Años disponibles:`, years)
           setAvailableYears(years)
           
-          // Establecer el año más reciente por defecto
-          if (years.length > 0) {
-            const mostRecentYear = years[0]
-            console.log(`🔍 Año más reciente:`, mostRecentYear)
-            setSelectedYear(mostRecentYear)
-            
-            // Extraer meses disponibles para el año seleccionado
-            const monthsForYear = [...new Set(jobsData
-              .filter((job: any) => new Date(job.fecha as string).getFullYear().toString() === mostRecentYear)
-              .map((job: any) => (new Date(job.fecha as string).getMonth() + 1).toString().padStart(2, '0'))
-            )].sort((a, b) => parseInt(a) - parseInt(b)) as string[]
-            console.log(`🔍 Meses disponibles para ${mostRecentYear}:`, monthsForYear)
-            
-            // Establecer el mes más reciente del año seleccionado por defecto
-            if (monthsForYear.length > 0) {
-              const mostRecentMonth = monthsForYear[monthsForYear.length - 1]
-              console.log(`🔍 Mes más reciente:`, mostRecentMonth)
-              setSelectedMonth(mostRecentMonth)
-            } else {
-              console.log(`🔍 No hay meses disponibles`)
-              setSelectedMonth("")
-            }
-          } else {
-            console.log(`🔍 No hay años disponibles`)
-            setSelectedYear("")
-            setSelectedMonth("")
-          }
+          // Por defecto, mostrar todos los trabajos (sin filtros)
+          console.log(`🔍 Estableciendo filtros por defecto: mostrar todos los trabajos`)
+          setSelectedYear("")
+          setSelectedMonth("")
         } else {
           console.log(`🔍 No hay trabajos disponibles`)
           // Si no hay trabajos, limpiar filtros
@@ -388,6 +372,12 @@ export function MechanicsSection() {
       availableYears
     })
     
+    // Si no hay filtros seleccionados, mostrar todos los trabajos
+    if (!selectedYear && !selectedMonth) {
+      console.log(`🔍 Sin filtros: mostrando todos los ${mechanicJobs.length} trabajos`)
+      return mechanicJobs
+    }
+    
     const filtered = mechanicJobs.filter((job) => {
       try {
         const jobDate = new Date(job.fecha as string)
@@ -416,8 +406,6 @@ export function MechanicsSection() {
           return matches
         }
         
-        // Si no hay filtros, mostrar todos
-        console.log(`🔍 Trabajo ${job.matricula_carro} - Sin filtros, mostrando`)
         return true
       } catch (error) {
         console.error("Error al procesar fecha del trabajo:", error)
@@ -809,6 +797,11 @@ export function MechanicsSection() {
                          ({filteredJobs.length} de {mechanicJobs.length})
                        </span>
                      )}
+                     {(selectedYear || selectedMonth) && (
+                       <Badge variant="secondary" className="ml-2">
+                         Filtros activos
+                       </Badge>
+                     )}
                    </h3>
                    
                    <div className="flex flex-col sm:flex-row gap-3">
@@ -853,7 +846,20 @@ export function MechanicsSection() {
                        </div>
                        
                        {/* Botón para limpiar filtros */}
-                       <div className="flex items-end">
+                       <div className="flex items-end gap-2">
+                         {(selectedYear || selectedMonth) && (
+                           <Button
+                             variant="outline"
+                             size="sm"
+                             onClick={() => {
+                               setSelectedYear("")
+                               setSelectedMonth("")
+                             }}
+                             className="px-3 py-2 h-[42px]"
+                           >
+                             Mostrar Todos
+                           </Button>
+                         )}
                          <Button
                            variant="outline"
                            size="sm"
@@ -862,6 +868,7 @@ export function MechanicsSection() {
                              setSelectedMonth("")
                            }}
                            className="px-3 py-2 h-[42px]"
+                           disabled={!selectedYear && !selectedMonth}
                          >
                            Limpiar Filtros
                          </Button>
@@ -919,9 +926,20 @@ export function MechanicsSection() {
                      <p className="text-lg">
                        {mechanicJobs.length === 0 
                          ? "No hay trabajos registrados para este mecánico"
-                         : `No hay trabajos en ${availableMonths.find(m => m.value === selectedMonth)?.label || 'este mes'} de ${selectedYear}`
+                         : selectedYear && selectedMonth
+                           ? `No hay trabajos en ${availableMonths.find(m => m.value === selectedMonth)?.label || 'este mes'} de ${selectedYear}`
+                           : selectedYear
+                             ? `No hay trabajos en el año ${selectedYear}`
+                             : selectedMonth
+                               ? `No hay trabajos en ${availableMonths.find(m => m.value === selectedMonth)?.label || 'este mes'}`
+                               : "No hay trabajos disponibles"
                        }
                      </p>
+                     {mechanicJobs.length > 0 && (selectedYear || selectedMonth) && (
+                       <p className="text-sm text-gray-500 mt-2">
+                         Intenta ajustar los filtros o limpiarlos para ver todos los trabajos
+                       </p>
+                     )}
                    </div>
                  )}
               </div>

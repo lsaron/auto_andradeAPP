@@ -28,6 +28,13 @@ interface WorkOrder {
   carId: string
   mechanicName?: string
   expenseDetails?: Expense[] // Agregar gastos detallados
+  assignedMechanics?: Array<{
+    id_mecanico: number
+    nombre_mecanico: string
+    porcentaje_comision: number
+    monto_comision: number
+    fecha_asignacion?: string
+  }> // Agregar mecánicos asignados
 }
 
 interface Expense {
@@ -559,11 +566,24 @@ export function WorkOrdersSection() {
         // Si hay mecánicos seleccionados, asignarlos al trabajo
         if (selectedMechanics.length > 0) {
           try {
-            const asignacionResponse = await mecanicosApi.assignToWork(workOrderId, selectedMechanics)
-            console.log("✅ Mecánicos asignados al trabajo:", asignacionResponse)
+            // Usar el endpoint de actualización de comisiones para edición
+            const actualizacionResponse = await fetch(`http://localhost:8000/api/mecanicos/trabajos/${workOrderId}/actualizar-comisiones`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(selectedMechanics),
+            })
+            
+            if (actualizacionResponse.ok) {
+              const resultado = await actualizacionResponse.json()
+              console.log("✅ Comisiones actualizadas para el trabajo:", resultado)
+            } else {
+              console.error("❌ Error al actualizar comisiones:", actualizacionResponse.status)
+            }
           } catch (error) {
-            console.error("❌ Error al asignar mecánicos:", error)
-            // No fallar si no se pueden asignar mecánicos, solo loguear el error
+            console.error("❌ Error al actualizar comisiones:", error)
+            // No fallar si no se pueden actualizar comisiones, solo loguear el error
           }
         }
 
@@ -862,43 +882,60 @@ export function WorkOrdersSection() {
       const workOrderId = parseInt(order.id.replace("WO-", ""))
       
       // Obtener los gastos detallados del backend
-      const response = await fetch(`http://localhost:8000/api/trabajos/trabajo/${workOrderId}/gastos`)
-      
-      if (response.ok) {
-        const expenseDetails = await response.json()
-        console.log("🔍 Gastos obtenidos del backend:", expenseDetails)
+      let expenseDetails = []
+      try {
+        const response = await fetch(`http://localhost:8000/api/trabajos/trabajo/${workOrderId}/gastos`)
         
-        // Mapear los datos del backend al formato esperado por el frontend
-        const mappedExpenses = expenseDetails.map((expense: any) => {
-          console.log("🔍 Procesando gasto para detalle:", expense)
-          return {
-            id: expense.id,
-            item: expense.descripcion,
-            amount: expense.monto.toString(),
-            amountCharged: expense.monto_cobrado ? expense.monto_cobrado.toString() : expense.monto.toString()
-          }
-        })
-        
-        console.log("🔍 Gastos mapeados:", mappedExpenses)
-        
-        // Actualizar la orden con los gastos detallados
-        const orderWithExpenses = {
-          ...order,
-          expenseDetails: mappedExpenses
+        if (response.ok) {
+          const expenseDetailsData = await response.json()
+          console.log("🔍 Gastos obtenidos del backend:", expenseDetailsData)
+          
+          // Mapear los datos del backend al formato esperado por el frontend
+          expenseDetails = expenseDetailsData.map((expense: any) => {
+            console.log("🔍 Procesando gasto para detalle:", expense)
+            return {
+              id: expense.id,
+              item: expense.descripcion,
+              amount: expense.monto.toString(),
+              amountCharged: expense.monto_cobrado ? expense.monto_cobrado.toString() : expense.monto.toString()
+            }
+          })
+          console.log("🔍 Gastos mapeados:", expenseDetails)
+        } else {
+          console.warn("No se pudieron obtener los gastos detallados")
         }
-        
-        console.log("🔍 Orden con gastos:", orderWithExpenses)
-        console.log("🔍 expenseDetails:", orderWithExpenses.expenseDetails)
-        
-        setSelectedWorkOrder(orderWithExpenses)
-      } else {
-        // Si no se pueden obtener los gastos, usar la orden sin gastos detallados
-        console.warn("No se pudieron obtener los gastos detallados")
-        setSelectedWorkOrder(order)
+      } catch (error) {
+        console.error("Error al obtener gastos detallados:", error)
       }
+      
+      // Obtener los mecánicos asignados al trabajo
+      let assignedMechanics = []
+      try {
+        const mechanicsResponse = await fetch(`http://localhost:8000/api/mecanicos/trabajos/${workOrderId}/asignados`)
+        
+        if (mechanicsResponse.ok) {
+          const mechanicsData = await mechanicsResponse.json()
+          console.log("🔍 Mecánicos asignados obtenidos:", mechanicsData)
+          assignedMechanics = mechanicsData
+        } else {
+          console.warn("No se pudieron obtener los mecánicos asignados")
+        }
+      } catch (error) {
+        console.error("Error al obtener mecánicos asignados:", error)
+      }
+      
+      // Actualizar la orden con los gastos detallados y mecánicos asignados
+      const orderWithDetails = {
+        ...order,
+        expenseDetails: expenseDetails,
+        assignedMechanics: assignedMechanics
+      }
+      
+      console.log("🔍 Orden con detalles completos:", orderWithDetails)
+      setSelectedWorkOrder(orderWithDetails)
     } catch (error) {
-      console.error("Error al obtener gastos detallados:", error)
-      // En caso de error, mostrar la orden sin gastos detallados
+      console.error("Error al obtener detalles de la orden:", error)
+      // En caso de error, mostrar la orden sin detalles
       setSelectedWorkOrder(order)
     }
     
@@ -908,14 +945,14 @@ export function WorkOrdersSection() {
   // Add after handleViewWorkOrder function
   const handleEditWorkOrder = async (order: WorkOrder) => {
     console.log("🔍 Iniciando edición de orden:", order.id)
+    
+    // Extraer el ID numérico del trabajo (e.g., "WO-010" -> 10)
+    const workOrderId = parseInt(order.id.replace("WO-", ""))
+    
+    // Obtener los gastos detallados del backend para edición
+    let expensesToEdit = []
     try {
-      // Extraer el ID numérico del trabajo (e.g., "WO-010" -> 10)
-      const workOrderId = parseInt(order.id.replace("WO-", ""))
-      
-      // Obtener los gastos detallados del backend para edición
       const response = await fetch(`http://localhost:8000/api/trabajos/trabajo/${workOrderId}/gastos`)
-      
-      let expensesToEdit = []
       
       if (response.ok) {
         const expenseDetails = await response.json()
@@ -938,51 +975,56 @@ export function WorkOrdersSection() {
           { id: "2", item: "", amount: "", amountCharged: "" }
         ]
       }
+    } catch (error) {
+      console.warn("Error al obtener gastos detallados:", error)
+      expensesToEdit = [
+        { id: "1", item: "", amount: "", amountCharged: "" },
+        { id: "2", item: "", amount: "", amountCharged: "" }
+      ]
+    }
 
-      // Obtener los mecánicos asignados al trabajo
-      try {
-        const mechanicsResponse = await fetch(`http://localhost:8000/api/mecanicos/trabajos/${workOrderId}/asignados`)
-        if (mechanicsResponse.ok) {
-          const mechanicsData = await mechanicsResponse.json()
-          const assignedMechanics = mechanicsData.map((mechanic: any) => ({
-            id_mecanico: mechanic.id_mecanico,
-            porcentaje_comision: mechanic.porcentaje_comision || 2.0
-          }))
-          setSelectedMechanics(assignedMechanics)
-        } else {
-          setSelectedMechanics([])
-        }
-      } catch (error) {
-        console.warn("No se pudieron obtener los mecánicos asignados:", error)
+    // Obtener los mecánicos asignados al trabajo
+    try {
+      console.log("🔍 Obteniendo mecánicos asignados para trabajo:", workOrderId)
+      const mechanicsResponse = await fetch(`http://localhost:8000/api/mecanicos/trabajos/${workOrderId}/asignados`)
+      console.log("🔍 Response status:", mechanicsResponse.status)
+      
+      if (mechanicsResponse.ok) {
+        const mechanicsData = await mechanicsResponse.json()
+        console.log("🔍 Mecánicos obtenidos del backend:", mechanicsData)
+        
+        const assignedMechanics = mechanicsData.map((mechanic: any) => ({
+          id_mecanico: mechanic.id_mecanico,
+          porcentaje_comision: mechanic.porcentaje_comision || 2.0
+        }))
+        console.log("🔍 Mecánicos mapeados para selectedMechanics:", assignedMechanics)
+        
+        setSelectedMechanics(assignedMechanics)
+        console.log("🔍 selectedMechanics establecido:", assignedMechanics)
+        
+        // Verificar que se estableció correctamente
+        setTimeout(() => {
+          console.log("🔍 Verificación - selectedMechanics después de setState:", assignedMechanics)
+        }, 100)
+      } else {
+        console.warn("❌ No se pudieron obtener los mecánicos asignados. Status:", mechanicsResponse.status)
         setSelectedMechanics([])
       }
-
-      const editOrderData = {
-        id: order.id,
-        description: order.description,
-        totalCost: order.totalCost.toString(),
-        expenses: expensesToEdit,
-        applyWork: false, // Por defecto no aplicar IVA en edición
-      }
-      console.log("🔍 Datos del editOrder a establecer:", editOrderData)
-      setEditOrder(editOrderData)
-      setIsEditModalOpen(true)
     } catch (error) {
-      console.error("Error al obtener gastos para edición:", error)
-      // En caso de error, usar gastos vacíos
-      setEditOrder({
-        id: order.id,
-        description: order.description,
-        totalCost: order.totalCost.toString(),
-        expenses: [
-          { id: "1", item: "", amount: "", amountCharged: "" },
-          { id: "2", item: "", amount: "", amountCharged: "" }
-        ],
-        applyWork: false, // Por defecto no aplicar IVA en edición
-      })
+      console.warn("❌ Error al obtener mecánicos asignados:", error)
       setSelectedMechanics([])
-      setIsEditModalOpen(true)
     }
+
+    const editOrderData = {
+      id: order.id,
+      description: order.description,
+      totalCost: order.totalCost.toString(),
+      expenses: expensesToEdit,
+      applyWork: false, // Por defecto no aplicar IVA en edición
+    }
+    console.log("🔍 Datos del editOrder a establecer:", editOrderData)
+    setEditOrder(editOrderData)
+    setIsEditModalOpen(true)
   }
 
   const handleDeleteWorkOrder = (order: WorkOrder) => {
@@ -1330,6 +1372,12 @@ export function WorkOrdersSection() {
                         <span>Total Gastos (Costo Real):</span>
                         <span className="text-red-600">₡ {calculateTotalExpenses().toLocaleString("es-CR")}</span>
                       </div>
+                      <div className="flex justify-between text-blue-600">
+                        <span>Ganancia Base:</span>
+                        <span className="font-medium">
+                          ₡ {(Number.parseFloat(newOrder.totalCost || "0") - calculateTotalExpenses()).toLocaleString("es-CR")}
+                        </span>
+                      </div>
                       {calculateTotalMarkup() > 0 && (
                         <div className="flex justify-between text-green-600">
                           <span>Añadido por repuestos:</span>
@@ -1591,6 +1639,12 @@ export function WorkOrdersSection() {
                         <span>Total Gastos (Costo Real):</span>
                         <span className="text-red-600">₡ {calculateEditTotalExpenses().toLocaleString("es-CR")}</span>
                       </div>
+                      <div className="flex justify-between text-blue-600">
+                        <span>Ganancia Base:</span>
+                        <span className="font-medium">
+                          ₡ {(Number.parseFloat(editOrder.totalCost || "0") - calculateEditTotalExpenses()).toLocaleString("es-CR")}
+                        </span>
+                      </div>
                       {calculateEditTotalMarkup() > 0 && (
                         <div className="flex justify-between text-green-600">
                           <span>Añadido por repuestos:</span>
@@ -1622,56 +1676,29 @@ export function WorkOrdersSection() {
                   </p>
                 </div>
 
-                {/* Mechanics Selection */}
-                <div className="space-y-3">
-                  <Label className="text-sm font-medium">Seleccionar Mecánicos</Label>
-                  {isLoadingMechanics ? (
-                    <div className="flex items-center justify-center py-4">
-                      <LoadingSpinner size="sm" />
-                      <span className="ml-2 text-sm text-muted-foreground">Cargando mecánicos...</span>
-                    </div>
-                  ) : mechanicsError ? (
-                    <div className="text-red-600 text-sm">{mechanicsError}</div>
-                  ) : (
-                    <Select
-                      isMulti
-                      options={mechanics.map((mechanic) => ({
-                        value: mechanic.id,
-                        label: mechanic.name,
-                      }))}
-                      value={selectedMechanics.map((mechanic) => (
-                        {
-                          value: mechanic.id_mecanico.toString(),
-                          label: mechanics.find(m => m.id === mechanic.id_mecanico.toString())?.name || 'Mecánico',
-                        }
-                      ))}
-                      onChange={(selectedOptions) => {
-                        const newMechanics = selectedOptions?.map((option) => ({
-                          id_mecanico: parseInt(option.value),
-                          porcentaje_comision: 2.0, // Porcentaje por defecto
-                        })) || []
-                        setSelectedMechanics(newMechanics)
-                      }}
-                      placeholder="Selecciona los mecánicos..."
-                      className="text-sm"
-                      classNamePrefix="react-select"
-                    />
-                  )}
-                </div>
-
-                {/* Current Mechanics Display */}
+                {/* Current Mechanics Display - Mostrar primero los mecánicos ya asignados */}
                 {selectedMechanics.length > 0 && (
                   <div className="space-y-2">
                     <Label className="text-sm font-medium">Mecánicos Actuales</Label>
-                    <div className="space-y-2 max-h-32 overflow-y-auto border rounded-md p-3 bg-gray-50">
+                    <div className="space-y-2 max-h-32 overflow-y-auto border rounded-md p-3 bg-blue-50">
                       {selectedMechanics.map((mechanic, index) => {
                         const mechanicInfo = mechanics.find(m => m.id === mechanic.id_mecanico.toString())
                         return (
-                          <div key={index} className="flex items-center justify-between text-sm">
-                            <span className="font-medium">{mechanicInfo?.name || 'Mecánico'}</span>
-                            <span className="text-muted-foreground">
-                              {mechanic.porcentaje_comision}% - Comisión calculada automáticamente
-                            </span>
+                          <div key={index} className="flex items-center justify-between text-sm p-2 bg-white rounded border">
+                            <div className="flex items-center gap-2">
+                              <Users className="h-4 w-4 text-blue-600" />
+                              <span className="font-medium text-blue-800">
+                                {mechanicInfo?.name || `Mecánico ${mechanic.id_mecanico}`}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs bg-blue-100 text-blue-700">
+                                {mechanic.porcentaje_comision}% comisión
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                Asignado
+                              </span>
+                            </div>
                           </div>
                         )
                       })}
@@ -1694,6 +1721,52 @@ export function WorkOrdersSection() {
                     )}
                   </div>
                 )}
+
+                {/* Mechanics Selection */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">
+                    {selectedMechanics.length > 0 ? "Modificar Selección de Mecánicos" : "Seleccionar Mecánicos"}
+                  </Label>
+                  {isLoadingMechanics ? (
+                    <div className="flex items-center justify-center py-4">
+                      <LoadingSpinner size="sm" />
+                      <span className="ml-2 text-sm text-muted-foreground">Cargando mecánicos...</span>
+                    </div>
+                  ) : mechanicsError ? (
+                    <div className="text-red-600 text-sm">{mechanicsError}</div>
+                  ) : (
+                    <Select
+                      isMulti
+                      options={mechanics.map((mechanic) => ({
+                        value: mechanic.id,
+                        label: `${mechanic.name} (${mechanic.mechanic_id})`,
+                      }))}
+                      value={selectedMechanics.map((mechanic) => {
+                        const mechanicInfo = mechanics.find(m => m.id === mechanic.id_mecanico.toString())
+                        return {
+                          value: mechanic.id_mecanico.toString(),
+                          label: mechanicInfo?.name || `Mecánico ${mechanic.id_mecanico}`,
+                        }
+                      })}
+                      onChange={(selectedOptions) => {
+                        const newMechanics = selectedOptions?.map((option) => ({
+                          id_mecanico: parseInt(option.value),
+                          porcentaje_comision: 2.0, // Porcentaje por defecto
+                        })) || []
+                        setSelectedMechanics(newMechanics)
+                      }}
+                      placeholder={selectedMechanics.length > 0 ? "Modificar selección..." : "Selecciona los mecánicos..."}
+                      className="text-sm"
+                      classNamePrefix="react-select"
+                    />
+                  )}
+                  
+                  {selectedMechanics.length === 0 && (
+                    <div className="text-center py-4 text-sm text-muted-foreground">
+                      No hay mecánicos asignados a este trabajo
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Apply IVA Option */}
@@ -2274,7 +2347,7 @@ export function WorkOrdersSection() {
                           }, 0);
                           return (
                             <div className="flex justify-between items-center py-1">
-                              <span className="text-sm font-medium">Precio Cobrado al Cliente:</span>
+                              <span className="text-sm font-medium">Precio Cobrado (Respuestos/Materiales):</span>
                               <span className="font-semibold text-blue-600">
                                 {formatCurrency(totalCobrado)}
                               </span>
@@ -2309,6 +2382,47 @@ export function WorkOrdersSection() {
                             {formatCurrency(selectedWorkOrder.totalCost)}
                           </span>
                         </div>
+
+                        {/* Ganancia Base (Mano de Obra) */}
+                        <div className="flex justify-between py-1">
+                          <span className="text-sm font-medium">Ganancia Base:</span>
+                          <span className="font-semibold text-blue-600">
+                            {formatCurrency(selectedWorkOrder.totalCost - selectedWorkOrder.expenses)}
+                          </span>
+                        </div>
+
+                        {/* Mecánicos Asignados y Comisiones */}
+                        {selectedWorkOrder.assignedMechanics && selectedWorkOrder.assignedMechanics.length > 0 ? (
+                          <div className="space-y-2 pt-2 border-t border-red-200">
+                            <div className="flex items-center gap-2 py-1">
+                              <Users className="h-4 w-4 text-red-600" />
+                              <span className="text-sm font-medium text-red-600">Mecánicos Comisionados:</span>
+                            </div>
+                            {selectedWorkOrder.assignedMechanics.map((mechanic, index) => (
+                              <div key={index} className="flex justify-between items-center py-1 px-2 bg-red-50 rounded">
+                                <span className="text-sm text-red-700">
+                                  {mechanic.nombre_mecanico} ({mechanic.porcentaje_comision}%)
+                                </span>
+                                <span className="text-sm font-semibold text-red-600">
+                                  {formatCurrency(mechanic.monto_comision)}
+                                </span>
+                              </div>
+                            ))}
+                            <div className="flex justify-between items-center py-1 px-2 bg-red-100 rounded border border-red-200">
+                              <span className="text-sm font-medium text-red-800">Total Comisiones:</span>
+                              <span className="text-sm font-bold text-red-800">
+                                {formatCurrency(selectedWorkOrder.assignedMechanics.reduce((total, mechanic) => total + mechanic.monto_comision, 0))}
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="pt-2 border-t border-gray-200">
+                            <div className="flex items-center gap-2 py-1">
+                              <Users className="h-4 w-4 text-gray-400" />
+                              <span className="text-sm text-gray-500">No hay mecánicos asignados a este trabajo</span>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Ganancia Neta (incluyendo ganancia por repuestos) */}
                         <div className="flex justify-between py-1">
@@ -2361,6 +2475,39 @@ export function WorkOrdersSection() {
                               {formatCurrency(selectedWorkOrder.totalCost - selectedWorkOrder.expenses)}
                             </span>
                           </div>
+
+                          {/* Mecánicos Asignados y Comisiones */}
+                          {selectedWorkOrder.assignedMechanics && selectedWorkOrder.assignedMechanics.length > 0 ? (
+                            <div className="space-y-2 pt-2 border-t border-red-200">
+                              <div className="flex items-center gap-2 py-1">
+                                <Users className="h-4 w-4 text-red-600" />
+                                <span className="text-sm font-medium text-red-600">Mecánicos Comisionados:</span>
+                              </div>
+                              {selectedWorkOrder.assignedMechanics.map((mechanic, index) => (
+                                <div key={index} className="flex justify-between items-center py-1 px-2 bg-red-50 rounded">
+                                  <span className="text-sm text-red-700">
+                                    {mechanic.nombre_mecanico} ({mechanic.porcentaje_comision}%)
+                                  </span>
+                                  <span className="text-sm font-semibold text-red-600">
+                                    {formatCurrency(mechanic.monto_comision)}
+                                  </span>
+                                </div>
+                              ))}
+                              <div className="flex justify-between items-center py-1 px-2 bg-red-100 rounded border border-red-200">
+                                <span className="text-sm font-medium text-red-800">Total Comisiones:</span>
+                                <span className="text-sm font-bold text-red-800">
+                                  {formatCurrency(selectedWorkOrder.assignedMechanics.reduce((total, mechanic) => total + mechanic.monto_comision, 0))}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="pt-2 border-t border-gray-200">
+                              <div className="flex items-center gap-2 py-1">
+                                <Users className="h-4 w-4 text-gray-400" />
+                                <span className="text-sm text-gray-500">No hay mecánicos asignados a este trabajo</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

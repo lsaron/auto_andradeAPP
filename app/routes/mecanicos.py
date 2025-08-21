@@ -184,6 +184,97 @@ def asignar_mecanicos_a_trabajo(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.put("/trabajos/{trabajo_id}/actualizar-comisiones")
+def actualizar_comisiones_trabajo(
+    trabajo_id: int,
+    mecanicos: List[AsignacionMecanico],
+    db: Session = Depends(get_db)
+):
+    """Actualizar comisiones existentes de un trabajo (para edición) en lugar de crear nuevas"""
+    try:
+        print(f"🔍 API: Actualizando comisiones para trabajo {trabajo_id}")
+        print(f"🔍 API: Mecánicos recibidos: {mecanicos}")
+        
+        mecanicos_ids = [m.id_mecanico for m in mecanicos]
+        print(f"🔍 API: IDs de mecánicos extraídos: {mecanicos_ids}")
+        
+        # Verificar que el trabajo existe
+        trabajo = db.query(Trabajo).filter(Trabajo.id == trabajo_id).first()
+        if not trabajo:
+            raise HTTPException(status_code=404, detail=f"Trabajo {trabajo_id} no encontrado")
+        
+        print(f"✅ API: Trabajo {trabajo_id} encontrado - Descripción: {trabajo.descripcion}")
+        
+        # Llamar al servicio para actualizar comisiones
+        asignaciones = MecanicoService.actualizar_comisiones_trabajo(db, trabajo_id, mecanicos_ids)
+        print(f"✅ API: Comisiones actualizadas - {len(asignaciones)} asignaciones")
+        
+        # Construir respuesta con detalles
+        respuesta = []
+        for asignacion in asignaciones:
+            mecanico = MecanicoService.obtener_mecanico(db, asignacion.id_mecanico)
+            if mecanico:
+                respuesta_item = {
+                    "id_trabajo": asignacion.id_trabajo,
+                    "id_mecanico": asignacion.id_mecanico,
+                    "nombre_mecanico": mecanico.nombre,
+                    "porcentaje_comision": float(asignacion.porcentaje_comision),
+                    "monto_comision": float(asignacion.monto_comision),
+                    "tipo": "actualizada" if asignacion.id else "nueva"
+                }
+                respuesta.append(respuesta_item)
+        
+        return {
+            "message": f"Comisiones actualizadas para trabajo {trabajo_id}",
+            "asignaciones": respuesta,
+            "total_asignaciones": len(respuesta)
+        }
+        
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        print(f"❌ API: Error al actualizar comisiones: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/trabajos/{trabajo_id}/asignados")
+def obtener_mecanicos_asignados_trabajo(
+    trabajo_id: int,
+    db: Session = Depends(get_db)
+):
+    """Obtener los mecánicos asignados a un trabajo específico"""
+    try:
+        # Verificar que el trabajo existe
+        trabajo = db.query(Trabajo).filter(Trabajo.id == trabajo_id).first()
+        if not trabajo:
+            raise HTTPException(status_code=404, detail=f"Trabajo {trabajo_id} no encontrado")
+        
+        # Obtener los mecánicos asignados al trabajo
+        asignaciones = db.query(TrabajoMecanico).filter(
+            TrabajoMecanico.id_trabajo == trabajo_id
+        ).all()
+        
+        # Construir respuesta con detalles de cada mecánico
+        respuesta = []
+        for asignacion in asignaciones:
+            mecanico = db.query(MecanicoModel).filter(
+                MecanicoModel.id == asignacion.id_mecanico
+            ).first()
+            
+            if mecanico:
+                respuesta_item = {
+                    "id_mecanico": asignacion.id_mecanico,
+                    "nombre_mecanico": mecanico.nombre,
+                    "porcentaje_comision": float(asignacion.porcentaje_comision),
+                    "monto_comision": float(asignacion.monto_comision),
+                    "fecha_asignacion": asignacion.created_at.isoformat() if asignacion.created_at else None
+                }
+                respuesta.append(respuesta_item)
+        
+        return respuesta
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/{mecanico_id}/trabajos")
 def obtener_trabajos_mecanico(
     mecanico_id: int,

@@ -154,6 +154,113 @@ class MecanicoService:
             raise e
     
     @staticmethod
+    def actualizar_comisiones_trabajo(db: Session, trabajo_id: int, mecanicos_ids: List[int]) -> List[TrabajoMecanico]:
+        """Actualizar comisiones existentes de un trabajo (para edición) en lugar de crear nuevas"""
+        try:
+            # Obtener el trabajo
+            trabajo = db.query(Trabajo).filter(Trabajo.id == trabajo_id).first()
+            if not trabajo:
+                raise ValueError("Trabajo no encontrado")
+            
+            # Calcular ganancia del trabajo (costo - gastos)
+            gastos_totales = db.query(func.sum(DetalleGasto.monto)).filter(
+                DetalleGasto.id_trabajo == trabajo_id
+            ).scalar() or Decimal('0.00')
+            
+            # Ensure gastos_totales is Decimal
+            if not isinstance(gastos_totales, Decimal):
+                gastos_totales = Decimal(str(gastos_totales))
+            
+            # Convertir a Decimal para cálculos precisos
+            costo_trabajo = Decimal(str(trabajo.costo))
+            ganancia_trabajo = costo_trabajo - gastos_totales
+            
+            # Verificar que hay ganancia para calcular comisiones
+            if ganancia_trabajo <= 0:
+                ganancia_trabajo = Decimal('0.00')
+            
+            # Calcular comisión por mecánico (dividida equitativamente)
+            comision_por_mecanico = ganancia_trabajo * Decimal('0.02') / len(mecanicos_ids) if mecanicos_ids else Decimal('0.00')
+            
+            # Obtener asignaciones existentes
+            asignaciones_existentes = db.query(TrabajoMecanico).filter(
+                TrabajoMecanico.id_trabajo == trabajo_id
+            ).all()
+            
+            # Obtener comisiones existentes
+            comisiones_existentes = db.query(ComisionMecanico).filter(
+                ComisionMecanico.id_trabajo == trabajo_id
+            ).all()
+            
+            # Crear un mapa de mecánicos existentes para comparar
+            mecanicos_existentes = {asignacion.id_mecanico: asignacion for asignacion in asignaciones_existentes}
+            comisiones_existentes_map = {comision.id_mecanico: comision for comision in comisiones_existentes}
+            
+            # Lista para almacenar todas las asignaciones (existentes y nuevas)
+            todas_asignaciones = []
+            
+            # Procesar cada mecánico solicitado
+            for mecanico_id in mecanicos_ids:
+                # Verificar que el mecánico existe y está activo
+                mecanico = db.query(Mecanico).filter(
+                    and_(Mecanico.id == mecanico_id, Mecanico.activo == True)
+                ).first()
+                
+                if not mecanico:
+                    continue
+                
+                if mecanico_id in mecanicos_existentes:
+                    # Actualizar asignación existente
+                    asignacion_existente = mecanicos_existentes[mecanico_id]
+                    asignacion_existente.monto_comision = comision_por_mecanico
+                    asignacion_existente.porcentaje_comision = Decimal('2.00')
+                    todas_asignaciones.append(asignacion_existente)
+                    
+                    # Actualizar comisión existente
+                    if mecanico_id in comisiones_existentes_map:
+                        comision_existente = comisiones_existentes_map[mecanico_id]
+                        comision_existente.ganancia_trabajo = ganancia_trabajo
+                        comision_existente.monto_comision = comision_por_mecanico
+                        comision_existente.fecha_calculo = datetime.now(timezone.utc)
+                else:
+                    # Crear nueva asignación
+                    nueva_asignacion = TrabajoMecanico(
+                        id_trabajo=trabajo_id,
+                        id_mecanico=mecanico_id,
+                        porcentaje_comision=Decimal('2.00'),
+                        monto_comision=comision_por_mecanico
+                    )
+                    db.add(nueva_asignacion)
+                    todas_asignaciones.append(nueva_asignacion)
+                    
+                    # Crear nueva comisión
+                    nueva_comision = ComisionMecanico(
+                        id_trabajo=trabajo_id,
+                        id_mecanico=mecanico_id,
+                        ganancia_trabajo=ganancia_trabajo,
+                        porcentaje_comision=Decimal('2.00'),
+                        monto_comision=comision_por_mecanico,
+                        mes_reporte=datetime.now(timezone.utc).strftime('%Y-%m')
+                    )
+                    db.add(nueva_comision)
+            
+            # Eliminar asignaciones y comisiones de mecánicos que ya no están asignados
+            for asignacion_existente in asignaciones_existentes:
+                if asignacion_existente.id_mecanico not in mecanicos_ids:
+                    db.delete(asignacion_existente)
+            
+            for comision_existente in comisiones_existentes:
+                if comision_existente.id_mecanico not in mecanicos_ids:
+                    db.delete(comision_existente)
+            
+            db.commit()
+            return todas_asignaciones
+            
+        except Exception as e:
+            db.rollback()
+            raise e
+    
+    @staticmethod
     def obtener_estadisticas_mecanico(db: Session, mecanico_id: int, mes: Optional[str] = None) -> MecanicoConEstadisticas:
         """Obtener estadísticas de un mecánico (trabajos, ganancias, comisiones)"""
         mecanico = db.query(Mecanico).filter(Mecanico.id == mecanico_id).first()
