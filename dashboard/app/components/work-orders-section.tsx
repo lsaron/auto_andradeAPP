@@ -106,6 +106,10 @@ export function WorkOrdersSection() {
   // Add after the existing modal states
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [orderToDelete, setOrderToDelete] = useState<WorkOrder | null>(null)
+  
+  // Print options modal state
+  const [isPrintOptionsModalOpen, setIsPrintOptionsModalOpen] = useState(false)
+  const [selectedOrderForPrint, setSelectedOrderForPrint] = useState<WorkOrder | null>(null)
 
   // Form state
   const [newOrder, setNewOrder] = useState({
@@ -1025,6 +1029,179 @@ export function WorkOrdersSection() {
     console.log("🔍 Datos del editOrder a establecer:", editOrderData)
     setEditOrder(editOrderData)
     setIsEditModalOpen(true)
+  }
+
+  const handlePrintWorkOrder = async (order: WorkOrder) => {
+    setSelectedOrderForPrint(order)
+    setIsPrintOptionsModalOpen(true)
+  }
+
+  const handlePrintInvoice = async () => {
+    if (!selectedOrderForPrint) return
+    
+    try {
+      console.log("🖨️ Imprimiendo factura para:", selectedOrderForPrint.id)
+      
+      // Crear una ventana de impresión con el contenido de la factura
+      const printWindow = window.open('', '_blank')
+      if (!printWindow) {
+        alert("Por favor, permite las ventanas emergentes para imprimir")
+        return
+      }
+
+      // Crear el contenido HTML para imprimir la factura
+      const printContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Factura ${selectedOrderForPrint.id}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 20px; margin-bottom: 20px; }
+            .invoice-info { margin-bottom: 20px; }
+            .section { margin-bottom: 15px; }
+            .section-title { font-weight: bold; margin-bottom: 5px; }
+            .row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+            .total { font-weight: bold; font-size: 18px; border-top: 1px solid #000; padding-top: 10px; }
+            .table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+            .table th, .table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            .table th { background-color: #f2f2f2; }
+            @media print { body { margin: 0; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Auto Andrade</h1>
+            <h2>FACTURA</h2>
+            <p>Orden: ${selectedOrderForPrint.id}</p>
+            <p>Fecha: ${new Date(selectedOrderForPrint.date).toLocaleDateString('es-ES')}</p>
+          </div>
+          
+          <div class="invoice-info">
+            <div class="section">
+              <div class="section-title">Información del Cliente</div>
+              <div class="row">
+                <span>Nombre:</span>
+                <span>${selectedOrderForPrint.clientName}</span>
+              </div>
+            </div>
+            
+            <div class="section">
+              <div class="section-title">Información del Vehículo</div>
+              <div class="row">
+                <span>Placa:</span>
+                <span>${selectedOrderForPrint.licensePlate}</span>
+              </div>
+            </div>
+            
+            <div class="section">
+              <div class="section-title">Servicios Realizados</div>
+              <p>${selectedOrderForPrint.description}</p>
+            </div>
+            
+            <div class="section">
+              <div class="section-title">Detalle de Costos</div>
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Concepto</th>
+                    <th>Monto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Servicios</td>
+                    <td>${formatCurrency(selectedOrderForPrint.totalCost - (selectedOrderForPrint.expenses || 0))}</td>
+                  </tr>
+                  ${selectedOrderForPrint.expenses && selectedOrderForPrint.expenses > 0 ? `
+                  <tr>
+                    <td>Repuestos y Materiales</td>
+                    <td>${formatCurrency(selectedOrderForPrint.expenses)}</td>
+                  </tr>
+                  ` : ''}
+                </tbody>
+              </table>
+            </div>
+            
+            <div class="total">
+              <div class="row">
+                <span>TOTAL A PAGAR:</span>
+                <span>${formatCurrency(selectedOrderForPrint.totalCost)}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div style="margin-top: 40px; text-align: center;">
+            <p>Firma del Cliente: _________________________</p>
+            <p>Firma del Representante: _________________________</p>
+          </div>
+        </body>
+        </html>
+      `
+
+      printWindow.document.write(printContent)
+      printWindow.document.close()
+      
+      // Esperar a que se cargue el contenido y luego imprimir
+      printWindow.onload = () => {
+        printWindow.print()
+        printWindow.close()
+      }
+      
+      setIsPrintOptionsModalOpen(false)
+      
+    } catch (error) {
+      console.error("Error al imprimir la factura:", error)
+      alert("Error al imprimir la factura. Inténtalo de nuevo.")
+    }
+  }
+
+  const handleGeneratePDF = async () => {
+    if (!selectedOrderForPrint) return
+    
+    try {
+      console.log("📄 Generando PDF para:", selectedOrderForPrint.id)
+      
+      // Simular generación de PDF
+      alert(`Generando PDF para la orden ${selectedOrderForPrint.id}...`)
+      
+      // TODO: Implementar generación real de PDF
+      // const response = await fetch('/api/generate-pdf', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ orderId: selectedOrderForPrint.id })
+      // })
+      
+      setIsPrintOptionsModalOpen(false)
+      
+    } catch (error) {
+      console.error("Error al generar PDF:", error)
+      alert("Error al generar PDF. Inténtalo de nuevo.")
+    }
+  }
+
+  const handleGenerateElectronicInvoice = async () => {
+    if (!selectedOrderForPrint) return
+    
+    try {
+      console.log("⚡ Generando factura electrónica para:", selectedOrderForPrint.id)
+      
+      // Simular generación de factura electrónica
+      alert(`Generando factura electrónica para la orden ${selectedOrderForPrint.id}...`)
+      
+      // TODO: Implementar generación real de factura electrónica
+      // const response = await fetch('/api/generate-electronic-invoice', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ orderId: selectedOrderForPrint.id })
+      // })
+      
+      setIsPrintOptionsModalOpen(false)
+      
+    } catch (error) {
+      console.error("Error al generar factura electrónica:", error)
+      alert("Error al generar factura electrónica. Inténtalo de nuevo.")
+    }
   }
 
   const handleDeleteWorkOrder = (order: WorkOrder) => {
@@ -2129,6 +2306,15 @@ export function WorkOrdersSection() {
                         <Button
                           variant="outline"
                           size="sm"
+                          className="hover:bg-blue-50 hover:text-blue-600 bg-transparent p-1 sm:p-2 h-7 w-7 sm:h-8 sm:w-8"
+                          onClick={() => handlePrintWorkOrder(order)}
+                          title="Imprimir orden"
+                        >
+                          <Printer className="h-3 w-3 sm:h-4 sm:w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="hover:bg-red-50 hover:text-red-600 bg-transparent p-1 sm:p-2 h-7 w-7 sm:h-8 sm:w-8"
                           onClick={() => handleDeleteWorkOrder(order)}
                         >
@@ -2154,6 +2340,15 @@ export function WorkOrdersSection() {
                         onClick={() => handleEditWorkOrder(order)}
                       >
                         <Edit className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="hover:bg-blue-50 hover:text-blue-600 bg-transparent p-1 h-7 w-7"
+                        onClick={() => handlePrintWorkOrder(order)}
+                        title="Imprimir orden"
+                      >
+                        <Printer className="h-3 w-3" />
                       </Button>
                       <Button
                         variant="outline"
@@ -2515,19 +2710,7 @@ export function WorkOrdersSection() {
                 </CardContent>
               </Card>
 
-              {/* Print Button */}
-              <div className="flex justify-center">
-                <Button
-                  onClick={() => {
-                    // TODO: Implement print functionality for work order
-                    alert(`Imprimiendo orden de trabajo ${selectedWorkOrder.id}...`)
-                  }}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  <Printer className="h-4 w-4 mr-2" />
-                  Imprimir Orden
-                </Button>
-              </div>
+
             </div>
           )}
 
@@ -2589,6 +2772,62 @@ export function WorkOrdersSection() {
             <Button onClick={confirmDeleteWorkOrder} className="bg-red-600 hover:bg-red-700 w-full sm:w-auto">
               <Trash2 className="h-4 w-4 mr-2" />
               Eliminar Orden
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Print Options Modal */}
+      <Dialog open={isPrintOptionsModalOpen} onOpenChange={setIsPrintOptionsModalOpen}>
+        <DialogContent className="max-w-md mx-4 sm:mx-auto bg-white dark:bg-gray-900">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg text-blue-600">
+              <Printer className="h-5 w-5" />
+              Opciones de Impresión
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedOrderForPrint && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Selecciona una opción para la orden de trabajo <strong>{selectedOrderForPrint.id}</strong>
+              </p>
+
+              <div className="space-y-3">
+                <Button
+                  onClick={handlePrintInvoice}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                  variant="default"
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  Imprimir Factura
+                </Button>
+
+                <Button
+                  onClick={handleGeneratePDF}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white"
+                  variant="default"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Generar PDF
+                </Button>
+
+                <Button
+                  onClick={handleGenerateElectronicInvoice}
+                  className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                  variant="default"
+                >
+                  <Wrench className="h-4 w-4 mr-2" />
+                  Generar Factura Electrónica
+                </Button>
+              </div>
+
+            </div>
+          )}
+
+          <div className="flex justify-end pt-4 border-t">
+            <Button variant="outline" onClick={() => setIsPrintOptionsModalOpen(false)}>
+              Cancelar
             </Button>
           </div>
         </DialogContent>
