@@ -69,7 +69,8 @@ def obtener_historial_carro(matricula: str, db: Session = Depends(get_db)):
             {
                 "id": g.id,
                 "descripcion": g.descripcion,
-                "monto": g.monto
+                "monto": g.monto,
+                "monto_cobrado": g.monto_cobrado
             }
             for g in t.detalle_gastos
         ]

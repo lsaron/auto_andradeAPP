@@ -129,10 +129,8 @@ export function CarsSection() {
         throw new Error(`Error ${res.status}: ${res.statusText}`)
       }
       const data = await res.json()
-      console.log("🔍 Datos del backend para carro:", matricula, data)
       
       const trabajos: WorkOrder[] = (data.historial_trabajos || []).map((t: any) => {
-        console.log("🔍 Trabajo:", t.id, "Gastos:", t.gastos)
         return {
         id: `WO-${t.id}`,
         carId: matricula,
@@ -144,7 +142,6 @@ export function CarsSection() {
         profit: t.costo - (t.gastos || []).reduce((acc: number, g: any) => acc + g.monto, 0),
         date: t.fecha,
         parts: (t.gastos || []).map((g: any) => {
-          console.log("🔍 Gasto:", g.descripcion, "monto:", g.monto, "monto_cobrado:", g.monto_cobrado)
           return {
             id: `G-${g.id}`,
             name: g.descripcion,
@@ -715,7 +712,7 @@ export function CarsSection() {
                 <Input
                   id="licensePlate"
                   value={newCar.licensePlate}
-                  onChange={(e) => setNewCar({ ...newCar, licensePlate: e.target.value })}
+                  onChange={(e) => setNewCar({ ...newCar, licensePlate: e.target.value.toUpperCase() })}
                   className="sm:col-span-3"
                 />
               </div>
@@ -1523,15 +1520,6 @@ export function CarsSection() {
                                 return total + (precioCobrado - costoReal);
                               }, 0) || 0))}
                             </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handlePrintInvoice(order)}
-                              className="text-xs"
-                            >
-                              <Printer className="h-3 w-3 mr-1" />
-                              {order.invoiceGenerated ? "Ver Factura" : "Generar Factura"}
-                            </Button>
                           </div>
                         </div>
 
@@ -1558,6 +1546,26 @@ export function CarsSection() {
                               </div>
                             </div>
                           </div>
+
+                          {/* Ganancia por Repuestos */}
+                          {(() => {
+                            const gananciaRepuestos = order.parts?.reduce((total, part) => {
+                              const costoReal = part.cost * part.quantity;
+                              const precioCobrado = part.costCharged * part.quantity;
+                              const ganancia = precioCobrado - costoReal;
+                              return total + (ganancia > 0 ? ganancia : 0);
+                            }, 0) || 0;
+                            
+                            if (gananciaRepuestos > 0) {
+                              return (
+                                <div className="flex justify-between items-center py-1 text-green-600">
+                                  <span className="text-sm font-medium">Ganancia por Repuestos:</span>
+                                  <span className="font-semibold">+{formatCurrency(gananciaRepuestos)}</span>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
 
                           {order.parts && order.parts.length > 0 && (
                             <div>
@@ -1605,7 +1613,16 @@ export function CarsSection() {
 
                           <div className="grid gap-2 sm:grid-cols-2 text-xs text-muted-foreground pt-2 border-t">
                             <div>Total Gastos: {formatCurrency(order.expenses)}</div>
-                            <div>Ganancia Neta: {formatCurrency(order.profit)}</div>
+                            <div>Ganancia Neta: {formatCurrency((() => {
+                              const gananciaBase = order.totalCost - order.expenses;
+                              const gananciaRepuestos = order.parts?.reduce((total, part) => {
+                                const costoReal = part.cost * part.quantity;
+                                const precioCobrado = part.costCharged * part.quantity;
+                                const ganancia = precioCobrado - costoReal;
+                                return total + (ganancia > 0 ? ganancia : 0);
+                              }, 0) || 0;
+                              return gananciaBase + gananciaRepuestos;
+                            })())}</div>
                           </div>
                         </div>
                       </CardContent>
