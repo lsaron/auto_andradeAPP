@@ -53,16 +53,14 @@ interface AppSidebarProps {
 
 export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps) {
   return (
-    <Sidebar className="border-r">
-      <SidebarHeader className="p-6">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white">
-            <Car className="h-4 w-4" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-lg font-semibold">Auto Andrade</span>
-            <span className="text-sm text-muted-foreground">Taller Mecánico</span>
-          </div>
+    <Sidebar className="border-r bg-white" style={{ background: 'white !important' }}>
+      <SidebarHeader className="p-4 pb-2">
+        <div className="flex items-center justify-center">
+          <img 
+            src="/auto-andrade.png" 
+            alt="Auto Andrade Logo" 
+            className="w-80 h-auto max-h-24 object-contain"
+          />
         </div>
       </SidebarHeader>
       <SidebarContent>
