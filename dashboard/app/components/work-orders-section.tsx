@@ -35,6 +35,8 @@ interface WorkOrder {
     monto_comision: number
     fecha_asignacion?: string
   }> // Agregar mecánicos asignados
+  manoObra: number // Campo para mano de obra (requerido)
+  markupRepuestos: number // Campo para markup de repuestos (requerido)
 }
 
 interface Expense {
@@ -99,6 +101,7 @@ export function WorkOrdersSection() {
     id: "",
     description: "",
     totalCost: "",
+    manoObra: "", // Nuevo campo para mano de obra
     expenses: [] as { id: string; item: string; amount: string; amountCharged: string }[],
     applyWork: false, // Campo para controlar si se aplica IVA
   })
@@ -116,6 +119,7 @@ export function WorkOrdersSection() {
     licensePlate: "",
     description: "",
     totalCost: "",
+    manoObra: "", // Nuevo campo para mano de obra
     clientName: "",
     expenses: [] as { id: string; item: string; amount: string; amountCharged: string }[],
     applyWork: false, // Add this new field
@@ -249,6 +253,71 @@ export function WorkOrdersSection() {
     }, 0)
   }
 
+  // Función para calcular el costo total automáticamente
+  const calculateTotalCost = (manoObra: number, expenses: { id: string; item: string; amount: string; amountCharged: string }[]) => {
+    const totalGastos = expenses.reduce((sum, expense) => {
+      const costoReal = parseFloat(expense.amount) || 0;
+      return sum + costoReal;
+    }, 0);
+    
+    // El costo total es solo mano de obra + gastos reales
+    // NO incluir el markup, ya que eso es ganancia, no costo
+    return manoObra + totalGastos;
+  };
+
+  // Función para calcular el costo total de una orden existente
+  const calculateOrderTotalCost = (order: WorkOrder) => {
+    // Si la orden ya tiene los nuevos campos, usarlos
+    if (order.manoObra !== undefined && order.markupRepuestos !== undefined) {
+      // El costo total es solo mano de obra + gastos reales
+      return (order.manoObra || 0) + (order.expenses || 0);
+    }
+    
+    // Si no tiene los nuevos campos, calcular basándose en los datos existentes
+    if (order.expenseDetails && order.expenseDetails.length > 0) {
+      const totalGastos = order.expenseDetails.reduce((sum, expense) => {
+        const costoReal = parseFloat(expense.amount) || 0;
+        return sum + costoReal;
+      }, 0);
+      
+      // Si no hay mano de obra explícita, asumimos que la ganancia es la mano de obra
+      const manoObra = order.profit || 0;
+      
+      // El costo total es solo mano de obra + gastos reales
+      return manoObra + totalGastos;
+    }
+    
+    // Fallback: usar el totalCost existente
+    return order.totalCost || 0;
+  };
+
+  // Función para calcular la ganancia de una orden existente
+  const calculateOrderProfit = (order: WorkOrder) => {
+    // Si la orden ya tiene los nuevos campos, usar la nueva lógica
+    if (order.manoObra !== undefined && order.markupRepuestos !== undefined) {
+      // Ganancia = Mano de Obra + Markup de Repuestos
+      return (order.manoObra || 0) + (order.markupRepuestos || 0);
+    }
+    
+    // Si no tiene los nuevos campos, usar la lógica existente
+    if (order.expenseDetails && order.expenseDetails.length > 0) {
+      const totalMarkup = order.expenseDetails.reduce((sum, expense) => {
+        const costoReal = parseFloat(expense.amount) || 0;
+        const precioVenta = parseFloat(expense.amountCharged || expense.amount) || costoReal;
+        return sum + (precioVenta - costoReal);
+      }, 0);
+      
+      // Ganancia = Mano de Obra + Markup de Repuestos
+      const manoObra = order.profit || 0;
+      return manoObra + totalMarkup;
+    }
+    
+    // Fallback: usar la ganancia existente
+    return order.profit || 0;
+  };
+
+
+
   // Calculate total markup from repuestos (ganancia extra de repuestos)
   const calculateTotalMarkup = () => {
     return newOrder.expenses.reduce((total, expense) => {
@@ -299,8 +368,10 @@ export function WorkOrdersSection() {
       return total + (markup > 0 ? markup : 0);
     }, 0);
 
-    const realProfit = totalCost - totalExpenses + totalMarkup;
-    console.log(`🔍 Ganancia real para ${order.id}: ${totalCost} - ${totalExpenses} + ${totalMarkup} = ${realProfit}`);
+    // Ganancia real = Mano de Obra + Markup de Repuestos
+    // NO restar gastos porque ya están incluidos en el costo total
+    const realProfit = totalMarkup;
+    console.log(`🔍 Ganancia real para ${order.id}: markup ${totalMarkup} = ${realProfit}`);
     
     return realProfit;
   }
@@ -381,62 +452,77 @@ export function WorkOrdersSection() {
   const calculateCommissionPreview = useCallback(() => {
     if (selectedMechanics.length === 0) return 0
     
-    const totalCost = Number.parseFloat(newOrder.totalCost) || 0
-    const totalExpenses = calculateTotalExpenses()
-    const ganancia = totalCost - totalExpenses
+    const manoObra = Number.parseFloat(newOrder.manoObra) || 0
     
-    if (ganancia <= 0) return 0
+    // ✅ CORRECTO: Comisión solo sobre la mano de obra (ganancia base del trabajo)
+    const gananciaBase = manoObra
     
-    // 2% de comisión dividido entre los mecánicos seleccionados
-    const comisionTotal = ganancia * 0.02
+    if (gananciaBase <= 0) return 0
+    
+    // 2% de comisión SOLO sobre la mano de obra
+    const comisionTotal = gananciaBase * 0.02
     const comisionPorMecanico = comisionTotal / selectedMechanics.length
     
+    console.log("🔍 Calculando comisión (lógica corregida):", {
+      manoObra,
+      gananciaBase,
+      comisionTotal,
+      comisionPorMecanico,
+      selectedMechanics: selectedMechanics.length
+    })
+    
     return comisionPorMecanico
-  }, [selectedMechanics, newOrder.totalCost, calculateTotalExpenses])
+  }, [selectedMechanics, newOrder.manoObra])
 
-  // Calculate commission preview for edit modal (SOLO sobre ganancia base, sin markup)
+  // Calculate commission preview for edit modal (lógica corregida)
   const calculateEditCommissionPreview = useCallback(() => {
     if (selectedMechanics.length === 0) return 0
     
-    const totalCost = Number.parseFloat(editOrder.totalCost) || 0
-    const totalExpenses = calculateEditTotalExpenses()
-    // La ganancia base es solo: costo total - gastos reales (sin markup)
-    const gananciaBase = totalCost - totalExpenses
+    const manoObra = Number.parseFloat(editOrder.manoObra) || 0
     
-    console.log("🔍 Calculando comisión para edición (SOLO ganancia base):", {
-      totalCost,
-      totalExpenses,
+    // ✅ CORRECTO: Comisión solo sobre la mano de obra (ganancia base del trabajo)
+    const gananciaBase = manoObra
+    
+    console.log("🔍 Calculando comisión para edición (lógica corregida):", {
+      manoObra,
       gananciaBase,
       selectedMechanics: selectedMechanics.length
     })
     
     if (gananciaBase <= 0) return 0
     
-    // 2% de comisión SOLO sobre la ganancia base (mano de obra + costo real repuestos)
+    // 2% de comisión SOLO sobre la mano de obra
     const comisionTotal = gananciaBase * 0.02
     const comisionPorMecanico = comisionTotal / selectedMechanics.length
     
-    console.log("🔍 Comisión calculada (SOLO ganancia base):", {
+    console.log("🔍 Comisión calculada (lógica corregida):", {
       comisionTotal,
       comisionPorMecanico
     })
     
     return comisionPorMecanico
-  }, [selectedMechanics, editOrder.totalCost, calculateEditTotalExpenses])
+  }, [selectedMechanics, editOrder.manoObra])
 
   // Update the handleAddWorkOrder function
   const handleAddWorkOrder = async () => {
     if (newOrder.licensePlate && newOrder.description && newOrder.clientName) {
       try {
+        // Calcular el costo total automáticamente
+        const manoObra = Number.parseFloat(newOrder.manoObra) || 0
         const totalExpenses = calculateTotalExpenses()
-        const totalCost = newOrder.totalCost ? Number.parseFloat(newOrder.totalCost) : null
-
+        const totalMarkup = calculateTotalMarkup()
+        // El costo total es solo mano de obra + gastos reales
+        // NO incluir el markup, ya que eso es ganancia, no costo
+        const costoTotalCalculado = manoObra + totalExpenses
+        
         // Log de los datos que se van a enviar
         const datosTrabajo = {
           matricula_carro: newOrder.licensePlate,
           descripcion: newOrder.description,
           fecha: new Date().toISOString().split("T")[0],
-          costo: totalCost || 0, // Si no hay costo total, enviar 0
+          costo: costoTotalCalculado, // Usar el costo calculado automáticamente
+          mano_obra: manoObra, // Nuevo campo
+          markup_repuestos: totalMarkup, // Nuevo campo
           aplica_iva: newOrder.applyWork, // Solo aplicar IVA si está seleccionado
           detalle_gastos: newOrder.expenses.map(expense => ({
             descripcion: expense.item,
@@ -518,6 +604,7 @@ export function WorkOrdersSection() {
           licensePlate: "",
           description: "",
           totalCost: "",
+          manoObra: "",
           clientName: "",
           expenses: [],
           applyWork: false,
@@ -535,8 +622,13 @@ export function WorkOrdersSection() {
   const handleSaveEditOrder = async () => {
     if (editOrder.description) {
       try {
-        const totalExpenses = calculateEditTotalExpenses()
-        const totalCost = editOrder.totalCost ? Number.parseFloat(editOrder.totalCost) : null
+        // Calcular el costo total automáticamente para edición
+        const manoObra = Number.parseFloat(editOrder.manoObra) || 0
+        const totalExpensesEdit = calculateEditTotalExpenses()
+        const totalMarkupEdit = calculateEditTotalMarkup()
+        // El costo total es solo mano de obra + gastos reales
+        // NO incluir el markup, ya que eso es ganancia, no costo
+        const costoTotalCalculado = manoObra + totalExpensesEdit
 
         // Extract the numeric ID from the work order ID (e.g., "WO-001" -> 1)
         const workOrderId = parseInt(editOrder.id.replace("WO-", ""))
@@ -550,7 +642,9 @@ export function WorkOrdersSection() {
             matricula_carro: "", // Keep existing
             descripcion: editOrder.description,
             fecha: new Date().toISOString().split("T")[0],
-            costo: totalCost || 0, // Si no hay costo total, enviar 0
+            costo: costoTotalCalculado, // Usar el costo calculado automáticamente
+            mano_obra: manoObra, // Nuevo campo
+            markup_repuestos: totalMarkupEdit, // Nuevo campo
             aplica_iva: editOrder.applyWork || false, // Solo aplicar IVA si está seleccionado
             detalle_gastos: editOrder.expenses.map(expense => ({
               descripcion: expense.item,
@@ -598,6 +692,7 @@ export function WorkOrdersSection() {
           id: "",
           description: "",
           totalCost: "",
+          manoObra: "",
           expenses: [],
           applyWork: false,
         })
@@ -662,24 +757,68 @@ export function WorkOrdersSection() {
             const response = await fetch(`http://localhost:8000/api/trabajos/trabajo/${workOrderId}/gastos`)
             
             if (response.ok) {
-              const expenseDetails = await response.json()
-              console.log(`🔍 Gastos para ${order.id}:`, expenseDetails)
+              const responseData = await response.json()
+              console.log(`🔍 Status HTTP para ${order.id}:`, response.status, response.statusText)
+              console.log(`🔍 Headers de respuesta para ${order.id}:`, Object.fromEntries(response.headers.entries()))
+              console.log(`🔍 Gastos para ${order.id}:`, responseData)
+              console.log(`🔍 Tipo de responseData:`, typeof responseData, Array.isArray(responseData))
+              console.log(`🔍 Contenido completo de responseData:`, JSON.stringify(responseData, null, 2))
+              
+              // Verificar que la respuesta sea un array válido o tenga la estructura esperada
+              let expensesArray = []
+              
+              if (Array.isArray(responseData)) {
+                // La API devuelve directamente un array
+                expensesArray = responseData
+              } else if (responseData && responseData.gastos && Array.isArray(responseData.gastos)) {
+                // La API devuelve un objeto con la propiedad 'gastos'
+                expensesArray = responseData.gastos
+                console.log(`🔍 Gastos extraídos de responseData.gastos para ${order.id}:`, expensesArray)
+              } else {
+                console.warn(`🔍 Respuesta de la API no tiene estructura válida para ${order.id}:`, responseData)
+                console.warn(`🔍 Contenido completo:`, JSON.stringify(responseData, null, 2))
+                return {
+                  ...order,
+                  expenseDetails: []
+                }
+              }
               
               // Mapear los datos del backend al formato esperado por el frontend
-              const mappedExpenses = expenseDetails.map((expense: any) => ({
+              const mappedExpenses = expensesArray.map((expense: any) => ({
                 id: expense.id,
                 item: expense.descripcion,
                 amount: expense.monto.toString(),
                 amountCharged: expense.monto_cobrado ? expense.monto_cobrado.toString() : expense.monto.toString()
               }))
               
+              console.log(`🔍 Mapped expenses para ${order.id}:`, mappedExpenses)
+              
+              // Calcular el costo total correcto: precioCliente + manoObra
+              const totalPrecioCliente = mappedExpenses.reduce((total: number, expense: any) => {
+                const precioCliente = Number(expense.amountCharged) || Number(expense.amount) || 0;
+                return total + precioCliente;
+              }, 0);
+              
+              const costoTotalCalculado = totalPrecioCliente + (order.manoObra || 0);
+              
+              console.log(`🔍 Costo total recalculado para ${order.id}:`, {
+                totalPrecioCliente,
+                manoObra: order.manoObra,
+                costoTotalCalculado
+              });
+              
+              // Actualizar los campos del trabajo si están disponibles
               return {
                 ...order,
-                expenseDetails: mappedExpenses
+                expenseDetails: mappedExpenses,
+                totalCost: costoTotalCalculado // ✅ Actualizar con el costo total correcto
               }
             } else {
               console.warn(`No se pudieron obtener gastos para ${order.id}`)
-              return order
+              return {
+                ...order,
+                expenseDetails: []
+              }
             }
           } catch (error) {
             console.error(`Error al obtener gastos para ${order.id}:`, error)
@@ -689,10 +828,15 @@ export function WorkOrdersSection() {
       )
       
       // Actualizar el estado con los gastos detallados
+      console.log("🔍 Actualizando estado con órdenes que incluyen totalCost recalculado:")
+      ordersWithExpenses.forEach(order => {
+        console.log(`🔍 ${order.id}: totalCost = ${order.totalCost}, expenseDetails = ${order.expenseDetails?.length || 0}`)
+      })
+      
       setWorkOrders(ordersWithExpenses)
       setFilteredWorkOrders(ordersWithExpenses)
       
-      console.log("🔍 Órdenes con gastos detallados:", ordersWithExpenses)
+      console.log("🔍 Estado actualizado. Órdenes con gastos detallados:", ordersWithExpenses)
     } catch (error) {
       console.error("Error al cargar gastos detallados:", error)
     }
@@ -731,6 +875,8 @@ export function WorkOrdersSection() {
           clientName: trabajo.cliente_nombre,
           clientId: trabajo.cliente_id || "",
           carId: trabajo.matricula_carro,
+          manoObra: trabajo.mano_obra || 0,
+          markupRepuestos: trabajo.markup_repuestos || 0,
           expenseDetails: [], // Inicialmente vacío, se cargará después
         }))
 
@@ -882,20 +1028,51 @@ export function WorkOrdersSection() {
 
   const handleViewWorkOrder = async (order: WorkOrder) => {
     try {
-      // Extraer el ID numérico del trabajo (e.g., "WO-010" -> 10)
+      // Extraer el ID numérico del trabajo (e.g., "WO-010" -> 10) - MOVIDO AL INICIO
       const workOrderId = parseInt(order.id.replace("WO-", ""))
       
-      // Obtener los gastos detallados del backend
-      let expenseDetails = []
-      try {
-        const response = await fetch(`http://localhost:8000/api/trabajos/trabajo/${workOrderId}/gastos`)
+      // Buscar la orden en el estado actual que ya tiene los gastos cargados
+      const orderWithExpenses = workOrders.find(wo => wo.id === order.id) || order
+      
+      console.log("🔍 Orden encontrada en estado:", orderWithExpenses)
+      console.log("🔍 ExpenseDetails en estado:", orderWithExpenses.expenseDetails)
+      
+      // Si la orden ya tiene gastos cargados, usarlos directamente
+      let expenseDetails = orderWithExpenses.expenseDetails || []
+      
+      // Si no hay gastos cargados, intentar cargarlos del backend
+      if (!expenseDetails || expenseDetails.length === 0) {
+        console.log("🔍 No hay gastos en estado, cargando del backend...")
         
-        if (response.ok) {
+        try {
+          const response = await fetch(`http://localhost:8000/api/trabajos/trabajo/${workOrderId}/gastos`)
+          
+                  if (response.ok) {
           const expenseDetailsData = await response.json()
+          console.log("🔍 Status HTTP:", response.status, response.statusText)
           console.log("🔍 Gastos obtenidos del backend:", expenseDetailsData)
+          console.log("🔍 Tipo de expenseDetailsData:", typeof expenseDetailsData, Array.isArray(expenseDetailsData))
+          console.log("🔍 Contenido completo de expenseDetailsData:", JSON.stringify(expenseDetailsData, null, 2))
+          
+          // Verificar que la respuesta sea un array válido o tenga la estructura esperada
+          let expensesArray = []
+          
+          if (Array.isArray(expenseDetailsData)) {
+            // La API devuelve directamente un array
+            expensesArray = expenseDetailsData
+          } else if (expenseDetailsData && expenseDetailsData.gastos && Array.isArray(expenseDetailsData.gastos)) {
+            // La API devuelve un objeto con la propiedad 'gastos'
+            expensesArray = expenseDetailsData.gastos
+            console.log("🔍 Gastos extraídos de expenseDetailsData.gastos:", expensesArray)
+          } else {
+            console.warn("🔍 Respuesta de la API no tiene estructura válida:", expenseDetailsData)
+            console.warn("🔍 Contenido completo:", JSON.stringify(expenseDetailsData, null, 2))
+            expenseDetails = []
+            return
+          }
           
           // Mapear los datos del backend al formato esperado por el frontend
-          expenseDetails = expenseDetailsData.map((expense: any) => {
+          expenseDetails = expensesArray.map((expense: any) => {
             console.log("🔍 Procesando gasto para detalle:", expense)
             return {
               id: expense.id,
@@ -907,9 +1084,11 @@ export function WorkOrdersSection() {
           console.log("🔍 Gastos mapeados:", expenseDetails)
         } else {
           console.warn("No se pudieron obtener los gastos detallados")
+          expenseDetails = []
         }
-      } catch (error) {
-        console.error("Error al obtener gastos detallados:", error)
+        } catch (error) {
+          console.error("Error al obtener gastos detallados:", error)
+        }
       }
       
       // Obtener los mecánicos asignados al trabajo
@@ -961,7 +1140,28 @@ export function WorkOrdersSection() {
       if (response.ok) {
         const expenseDetails = await response.json()
         console.log("🔍 Gastos obtenidos para edición:", expenseDetails)
-        expensesToEdit = expenseDetails.map((expense: any) => {
+        console.log("🔍 Tipo de expenseDetails:", typeof expenseDetails, Array.isArray(expenseDetails))
+        
+        // Verificar que la respuesta sea un array válido o tenga la estructura esperada
+        let expensesArray = []
+        
+        if (Array.isArray(expenseDetails)) {
+          // La API devuelve directamente un array
+          expensesArray = expenseDetails
+        } else if (expenseDetails && expenseDetails.gastos && Array.isArray(expenseDetails.gastos)) {
+          // La API devuelve un objeto con la propiedad 'gastos'
+          expensesArray = expenseDetails.gastos
+          console.log("🔍 Gastos extraídos de expenseDetails.gastos para edición:", expensesArray)
+        } else {
+          console.warn("🔍 Respuesta de la API no tiene estructura válida para edición:", expenseDetails)
+          expensesToEdit = [
+            { id: "1", item: "", amount: "", amountCharged: "" },
+            { id: "2", item: "", amount: "", amountCharged: "" }
+          ]
+          return
+        }
+        
+        expensesToEdit = expensesArray.map((expense: any) => {
           console.log("🔍 Procesando gasto:", expense)
           return {
             id: expense.id,
@@ -1023,6 +1223,7 @@ export function WorkOrdersSection() {
       id: order.id,
       description: order.description,
       totalCost: order.totalCost.toString(),
+      manoObra: order.manoObra ? order.manoObra.toString() : "",
       expenses: expensesToEdit,
       applyWork: false, // Por defecto no aplicar IVA en edición
     }
@@ -1111,7 +1312,7 @@ export function WorkOrdersSection() {
                 <tbody>
                   <tr>
                     <td>Servicios</td>
-                    <td>${formatCurrency(selectedOrderForPrint.totalCost - (selectedOrderForPrint.expenses || 0))}</td>
+                    <td>${formatCurrency(selectedOrderForPrint.manoObra || 0)}</td>
                   </tr>
                   ${selectedOrderForPrint.expenses && selectedOrderForPrint.expenses > 0 ? `
                   <tr>
@@ -1126,7 +1327,7 @@ export function WorkOrdersSection() {
             <div class="total">
               <div class="row">
                 <span>TOTAL A PAGAR:</span>
-                <span>${formatCurrency(selectedOrderForPrint.totalCost)}</span>
+                <span>${formatCurrency((selectedOrderForPrint.manoObra || 0) + (selectedOrderForPrint.expenses || 0))}</span>
               </div>
             </div>
           </div>
@@ -1460,7 +1661,7 @@ export function WorkOrdersSection() {
                           <Input
                             type="text"
                             inputMode="decimal"
-                            placeholder="Costo ₡"
+                            placeholder="₡ 0.00"
                             value={expense.amount}
                             onChange={(e) => updateExpense(expense.id, "amount", e.target.value)}
                             className="text-sm"
@@ -1470,7 +1671,7 @@ export function WorkOrdersSection() {
                           <Input
                             type="text"
                             inputMode="decimal"
-                            placeholder="Precio ₡"
+                            placeholder="₡ 0.00"
                             value={expense.amountCharged}
                             onChange={(e) => updateExpense(expense.id, "amountCharged", e.target.value)}
                             className="text-sm"
@@ -1514,68 +1715,96 @@ export function WorkOrdersSection() {
                 )}
               </div>
 
-              {/* Total Cost */}
+              {/* Mano de Obra */}
               <div className="space-y-2">
-                <Label htmlFor="totalCost" className="text-sm font-medium">
+                <Label htmlFor="manoObra" className="text-sm font-medium">
                   Mano de Obra
                 </Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm text-gray-500">₡</span>
                   <Input
-                    id="totalCost"
+                    id="manoObra"
                     type="text"
                     inputMode="decimal"
-                    value={newOrder.totalCost}
-                    onChange={(e) => setNewOrder({ ...newOrder, totalCost: e.target.value })}
+                    value={newOrder.manoObra}
+                    onChange={(e) => setNewOrder({ ...newOrder, manoObra: e.target.value })}
                     placeholder="0.00"
                     className="pl-8"
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Deja vacío si es un proyecto en curso que acumulará gastos gradualmente
+                  Costo de la mano de obra del mecánico
                 </p>
 
                 {/* Profit Calculation Display */}
-                {newOrder.totalCost && (
+                {(newOrder.manoObra || newOrder.expenses.length > 0) && (
                   <div className="mt-2 p-3 bg-blue-50 rounded-md">
                     <div className="text-sm space-y-1">
                       <div className="flex justify-between">
-                        <span>Costo Total:</span>
+                        <span>Mano de Obra:</span>
                         <span className="font-medium">
-                          ₡ {Number.parseFloat(newOrder.totalCost || "0").toLocaleString("es-CR")}
+                          ₡ {Number.parseFloat(newOrder.manoObra || "0").toLocaleString("es-CR")}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Total Gastos (Costo Real):</span>
+                        <span>Costos totales:</span>
                         <span className="text-red-600">₡ {calculateTotalExpenses().toLocaleString("es-CR")}</span>
                       </div>
-                      <div className="flex justify-between text-blue-600">
+                      <div className="flex justify-between text-green-600">
+                        <span>Precio cliente:</span>
+                        <span className="font-medium">₡ {(() => {
+                          // Precio cliente = suma de todos los precios cobrados al cliente
+                          return newOrder.expenses.reduce((total, expense) => {
+                            const precioCliente = expense.amountCharged && expense.amountCharged !== "" 
+                              ? Number.parseFloat(expense.amountCharged) 
+                              : Number.parseFloat(expense.amount) || 0;
+                            return total + precioCliente;
+                          }, 0);
+                        })().toLocaleString("es-CR")}</span>
+                      </div>
+                      <div className="flex justify-between text-blue-600 pt-1 border-t">
                         <span>Ganancia Base:</span>
                         <span className="font-medium">
-                          ₡ {(Number.parseFloat(newOrder.totalCost || "0") - calculateTotalExpenses()).toLocaleString("es-CR")}
+                          ₡ {(Number.parseFloat(newOrder.manoObra || "0") - calculateTotalExpenses()).toLocaleString("es-CR")}
                         </span>
                       </div>
-                      {calculateTotalMarkup() > 0 && (
-                        <div className="flex justify-between text-green-600">
-                          <span>Añadido por repuestos:</span>
-                          <span className="font-medium">+₡ {calculateTotalMarkup().toLocaleString("es-CR")}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between font-medium pt-1 border-t">
-                        <span>Ganancia Total Estimada:</span>
-                        <span
-                          className={`${(Number.parseFloat(newOrder.totalCost || "0") - calculateTotalExpenses() + calculateTotalMarkup()) >= 0 ? "text-green-600" : "text-red-600"}`}
-                        >
-                          ₡{" "}
-                          {(Number.parseFloat(newOrder.totalCost || "0") - calculateTotalExpenses() + calculateTotalMarkup()).toLocaleString(
-                            "es-CR",
-                          )}
+                      <div className="flex justify-between text-green-600 pt-1 border-t">
+                        <span>Ganancia:</span>
+                        <span className="font-medium">
+                          ₡ {(() => {
+                            const manoObra = Number.parseFloat(newOrder.manoObra || "0");
+                            const gastos = calculateTotalExpenses();
+                            const gananciaBase = manoObra - gastos;
+                            const markup = calculateTotalMarkup();
+                            return gananciaBase + markup;
+                          })().toLocaleString("es-CR")}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-purple-600 pt-1 border-t">
+                        <span>Costo Total:</span>
+                        <span className="font-medium">
+                          ₡ {(() => {
+                            const manoObra = Number.parseFloat(newOrder.manoObra || "0");
+                            const precioCliente = newOrder.expenses.reduce((total, expense) => {
+                              const precio = expense.amountCharged && expense.amountCharged !== "" 
+                                ? Number.parseFloat(expense.amountCharged) 
+                                : Number.parseFloat(expense.amount) || 0;
+                              return total + precio;
+                            }, 0);
+                            return precioCliente + manoObra;
+                          })().toLocaleString("es-CR")}
                         </span>
                       </div>
                     </div>
                   </div>
                 )}
               </div>
+
+              {/* Costo Total (Campo oculto para compatibilidad) */}
+              <input 
+                type="hidden" 
+                value={calculateTotalCost(Number.parseFloat(newOrder.manoObra || "0"), newOrder.expenses)}
+              />
 
               {/* Apply IVA Option */}
               <div className="space-y-3">
@@ -1758,7 +1987,7 @@ export function WorkOrdersSection() {
                     {/* Total Expenses Display */}
                     <div className="pt-2 border-t">
                       <div className="flex justify-between items-center text-sm font-medium">
-                        <span>Total de Gastos (Costo Real):</span>
+                        <span>Costo repuestos:</span>
                         <span className="text-red-600">₡ {calculateEditTotalExpenses().toLocaleString("es-CR")}</span>
                       </div>
                       {calculateEditTotalMarkup() > 0 && (
@@ -1813,13 +2042,13 @@ export function WorkOrdersSection() {
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Total Gastos (Costo Real):</span>
+                        <span>Costo repuestos:</span>
                         <span className="text-red-600">₡ {calculateEditTotalExpenses().toLocaleString("es-CR")}</span>
                       </div>
                       <div className="flex justify-between text-blue-600">
                         <span>Ganancia Base:</span>
                         <span className="font-medium">
-                          ₡ {(Number.parseFloat(editOrder.totalCost || "0") - calculateEditTotalExpenses()).toLocaleString("es-CR")}
+                          ₡ {(Number.parseFloat(editOrder.manoObra || "0")).toLocaleString("es-CR")}
                         </span>
                       </div>
                       {calculateEditTotalMarkup() > 0 && (
@@ -1831,11 +2060,11 @@ export function WorkOrdersSection() {
                       <div className="flex justify-between font-medium pt-1 border-t">
                         <span>Ganancia Total Estimada:</span>
                         <span
-                          className={`${(Number.parseFloat(editOrder.totalCost || "0") - calculateEditTotalExpenses() + calculateEditTotalMarkup()) >= 0 ? "text-green-600" : "text-red-600"}`}
+                          className={`${(Number.parseFloat(editOrder.manoObra || "0") + calculateEditTotalMarkup()) >= 0 ? "text-green-600" : "text-red-600"}`}
                         >
                           ₡{" "}
                           {(
-                            Number.parseFloat(editOrder.totalCost || "0") - calculateEditTotalExpenses() + calculateEditTotalMarkup()
+                            Number.parseFloat(editOrder.manoObra || "0") + calculateEditTotalMarkup()
                           ).toLocaleString("es-CR")}
                         </span>
                       </div>
@@ -1892,7 +2121,7 @@ export function WorkOrdersSection() {
                           </span>
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                          Basado en: Mano de Obra - Gastos Reales
+                          Basado en: Mano de Obra
                         </div>
                       </div>
                     )}
@@ -2249,10 +2478,14 @@ export function WorkOrdersSection() {
                       <div className="flex sm:hidden justify-between items-center pt-2 border-t">
                         <div className="flex items-center gap-2">
                           <Coins className="h-4 w-4 text-green-600" />
-                          <span className="font-medium text-green-600">{formatCurrency(order.totalCost)}</span>
+                          <span className="font-medium text-green-600">
+                            {formatCurrency(order.totalCost)}
+                          </span>
                         </div>
                         <div className="text-right">
-                          <div className="text-xs text-muted-foreground">Ganancia: {formatCurrency(calculateRealProfit(order))}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Ganancia: {formatCurrency((order.manoObra || 0) - (order.expenses || 0) + (order.markupRepuestos || 0))}
+                          </div>
                           {order.expenseDetails && order.expenseDetails.length > 0 && (
                             <div className="text-xs text-blue-600">
                               Gastos: {formatCurrency(order.expenses)}
@@ -2274,7 +2507,9 @@ export function WorkOrdersSection() {
                           <Coins className="h-4 w-4" />
                           {formatCurrency(order.totalCost)}
                         </div>
-                        <div className="text-xs text-muted-foreground">Ganancia: {formatCurrency(calculateRealProfit(order))}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Ganancia: {formatCurrency((order.manoObra || 0) - (order.expenses || 0) + (order.markupRepuestos || 0))}
+                        </div>
                         {order.expenseDetails && order.expenseDetails.length > 0 && (
                           <div className="text-xs text-blue-600">
                             Gastos: {formatCurrency(order.expenses)}
@@ -2494,6 +2729,14 @@ export function WorkOrdersSection() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {(() => {
+                    console.log("🔍 Debug - selectedWorkOrder:", selectedWorkOrder);
+                    console.log("🔍 Debug - expenseDetails:", selectedWorkOrder?.expenseDetails);
+                    console.log("🔍 Debug - expenseDetails length:", selectedWorkOrder?.expenseDetails?.length);
+                    console.log("🔍 Debug - expenseDetails type:", typeof selectedWorkOrder?.expenseDetails);
+                    console.log("🔍 Debug - expenseDetails isArray:", Array.isArray(selectedWorkOrder?.expenseDetails));
+                    return null;
+                  })()}
                   {selectedWorkOrder.expenseDetails && selectedWorkOrder.expenseDetails.length > 0 ? (
                     <div className="space-y-2">
                       {/* Header de columnas */}
@@ -2542,7 +2785,7 @@ export function WorkOrdersSection() {
                           }, 0);
                           return (
                             <div className="flex justify-between items-center py-1">
-                              <span className="text-sm font-medium">Precio Cobrado (Respuestos/Materiales):</span>
+                              <span className="text-sm font-medium">Precio Cliente:</span>
                               <span className="font-semibold text-blue-600">
                                 {formatCurrency(totalCobrado)}
                               </span>
@@ -2570,19 +2813,52 @@ export function WorkOrdersSection() {
                           return null;
                         })()}
 
-                        {/* Costo Total Cobrado */}
+                        {/* Mano de Obra */}
                         <div className="flex justify-between py-2 border-t">
                           <span className="text-sm font-medium">Mano de Obra:</span>
                           <span className="font-semibold text-lg text-blue-600">
-                            {formatCurrency(selectedWorkOrder.totalCost)}
+                            {formatCurrency(selectedWorkOrder.manoObra || 0)}
                           </span>
                         </div>
 
-                        {/* Ganancia Base (Mano de Obra) */}
+                        {/* Ganancia Base (Mano de Obra - Costo Real de Repuestos) */}
                         <div className="flex justify-between py-1">
                           <span className="text-sm font-medium">Ganancia Base:</span>
                           <span className="font-semibold text-blue-600">
-                            {formatCurrency(selectedWorkOrder.totalCost - selectedWorkOrder.expenses)}
+                            {(() => {
+                              // Ganancia Base = Mano de Obra - Costo Real de Repuestos
+                              // Ejemplo: 80000 (mano de obra) - 50000 (costo real) = 30000
+                              const manoObra = selectedWorkOrder.manoObra || 0;
+                              const gananciaBase = manoObra - selectedWorkOrder.expenses;
+                              
+                              return formatCurrency(gananciaBase);
+                            })()}
+                          </span>
+                        </div>
+
+                        {/* Ganancia Neta (Ganancia Base + Markup de Repuestos) */}
+                        <div className="flex justify-between py-1">
+                          <span className="text-sm font-medium">Ganancia Neta:</span>
+                          <span className="font-semibold text-lg text-green-600">
+                            {(() => {
+                              // Ganancia Base = Mano de Obra - Costo Real de Repuestos
+                              const manoObra = selectedWorkOrder.manoObra || 0;
+                              const gananciaBase = manoObra - selectedWorkOrder.expenses;
+                              
+                              // Calcular markup de repuestos (ganancia por repuestos)
+                              const gananciaRepuestos = selectedWorkOrder.expenseDetails.reduce((total, expense) => {
+                                const costoReal = Number(expense.amount) || 0;
+                                const precioCliente = Number(expense.amountCharged) || costoReal;
+                                const ganancia = precioCliente - costoReal;
+                                return total + (ganancia > 0 ? ganancia : 0);
+                              }, 0);
+                              
+                              // Ganancia Neta = Ganancia Base + Markup de Repuestos
+                              // Ejemplo: 30000 (ganancia base) + 20000 (markup) = 50000
+                              const gananciaNeta = gananciaBase + gananciaRepuestos;
+                              
+                              return formatCurrency(gananciaNeta);
+                            })()}
                           </span>
                         </div>
 
@@ -2619,21 +2895,21 @@ export function WorkOrdersSection() {
                           </div>
                         )}
 
-                        {/* Ganancia Neta (incluyendo ganancia por repuestos) */}
+                        {/* Cobro al Cliente (Mano de Obra + Precios Cliente) */}
                         <div className="flex justify-between py-1">
-                          <span className="text-sm font-medium">Ganancia Neta:</span>
-                          <span className="font-semibold text-lg text-green-600">
+                          <span className="text-sm font-medium">Cobro al Cliente:</span>
+                          <span className="font-semibold text-lg text-purple-600">
                             {(() => {
-                              const totalGastos = selectedWorkOrder.expenses;
-                              const totalCobrado = selectedWorkOrder.totalCost;
-                              const gananciaRepuestos = selectedWorkOrder.expenseDetails.reduce((total, expense) => {
-                                const costoReal = Number(expense.amount) || 0;
-                                const precioCliente = Number(expense.amountCharged) || costoReal;
-                                const ganancia = precioCliente - costoReal;
-                                return total + (ganancia > 0 ? ganancia : 0);
+                              // Calcular total de precios cliente
+                              const totalPreciosCliente = selectedWorkOrder.expenseDetails.reduce((total, expense) => {
+                                const precioCliente = Number(expense.amountCharged) || Number(expense.amount) || 0;
+                                return total + precioCliente;
                               }, 0);
                               
-                              return formatCurrency(totalCobrado - totalGastos + gananciaRepuestos);
+                              // Cobro al Cliente = Mano de Obra + Precios Cliente
+                              // Ejemplo: 80000 (mano de obra) + 70000 (precios cliente) = 150000
+                              const manoObra = selectedWorkOrder.manoObra || 0;
+                              return formatCurrency(manoObra + totalPreciosCliente);
                             })()}
                           </span>
                         </div>
@@ -2646,6 +2922,9 @@ export function WorkOrdersSection() {
                         <Coins className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                         <p>No hay gastos detallados disponibles</p>
                         <p className="text-xs">Los gastos se mostrarán aquí cuando estén disponibles</p>
+                        <p className="text-xs text-red-500">Debug: expenseDetails = {JSON.stringify(selectedWorkOrder?.expenseDetails)}</p>
+                        <p className="text-xs text-red-500">Debug: length = {selectedWorkOrder?.expenseDetails?.length}</p>
+                        <p className="text-xs text-red-500">Debug: selectedWorkOrder ID = {selectedWorkOrder?.id}</p>
                       </div>
 
                       {/* Totales básicos cuando no hay gastos detallados */}
@@ -2665,11 +2944,33 @@ export function WorkOrdersSection() {
                             </span>
                           </div>
                           <div className="flex justify-between py-1">
-                            <span className="text-sm font-medium">Ganancia Neta:</span>
-                            <span className="font-semibold text-lg text-blue-600">
-                              {formatCurrency(selectedWorkOrder.totalCost - selectedWorkOrder.expenses)}
+                            <span className="text-sm font-medium">Cobro al Cliente:</span>
+                            <span className="font-semibold text-lg text-purple-600">
+                              {formatCurrency(selectedWorkOrder.totalCost)}
                             </span>
                           </div>
+                          {(() => {
+                            const manoObra = selectedWorkOrder.manoObra || 0;
+                            const gananciaBase = manoObra - selectedWorkOrder.expenses;
+                            const markupRepuestos = selectedWorkOrder.markupRepuestos || 0;
+                            
+                            return (
+                              <>
+                                <div className="flex justify-between py-1">
+                                  <span className="text-sm font-medium">Ganancia Base:</span>
+                                  <span className="font-semibold text-lg text-blue-600">
+                                    {formatCurrency(gananciaBase)}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between py-1">
+                                  <span className="text-sm font-medium">Ganancia Neta:</span>
+                                  <span className="font-semibold text-lg text-green-600">
+                                    {formatCurrency(gananciaBase + markupRepuestos)}
+                                  </span>
+                                </div>
+                              </>
+                            );
+                          })()}
 
                           {/* Mecánicos Asignados y Comisiones */}
                           {selectedWorkOrder.assignedMechanics && selectedWorkOrder.assignedMechanics.length > 0 ? (

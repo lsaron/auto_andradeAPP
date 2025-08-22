@@ -43,6 +43,8 @@ def obtener_todos_los_trabajos(db: Session = Depends(get_db)):
             "descripcion": trabajo.descripcion,
             "fecha": trabajo.fecha.strftime("%Y-%m-%d"),
             "costo": float(costo),
+            "mano_obra": float(trabajo.mano_obra or 0.0),
+            "markup_repuestos": float(trabajo.markup_repuestos or 0.0),
             "aplica_iva": trabajo.aplica_iva,
             "cliente_nombre": cliente.nombre if cliente else "Sin cliente",
             "cliente_id": cliente.id_nacional if cliente else None,
@@ -65,6 +67,8 @@ def crear_trabajo(trabajo: TrabajoSchema, db: Session = Depends(get_db)):
         descripcion=trabajo.descripcion,
         fecha=trabajo.fecha,
         costo=trabajo.costo,
+        mano_obra=trabajo.mano_obra or 0.0,
+        markup_repuestos=trabajo.markup_repuestos or 0.0,
         aplica_iva=trabajo.aplica_iva
     )
     db.add(nuevo_trabajo)
@@ -111,6 +115,8 @@ def obtener_trabajo(id: int, db: Session = Depends(get_db)):
         "descripcion": trabajo.descripcion,
         "fecha": trabajo.fecha.strftime("%Y-%m-%d"),
         "costo": trabajo.costo,
+        "mano_obra": float(trabajo.mano_obra or 0.0),
+        "markup_repuestos": float(trabajo.markup_repuestos or 0.0),
         "aplica_iva": trabajo.aplica_iva,
         "cliente_nombre": cliente.nombre if cliente else "Sin cliente",
         "cliente_id": cliente.id_nacional if cliente else None,
@@ -136,6 +142,8 @@ def actualizar_trabajo(id: int, trabajo: TrabajoSchema, db: Session = Depends(ge
     # Actualizar datos del trabajo
     trabajo_db.descripcion = trabajo.descripcion
     trabajo_db.costo = trabajo.costo
+    trabajo_db.mano_obra = trabajo.mano_obra or 0.0
+    trabajo_db.markup_repuestos = trabajo.markup_repuestos or 0.0
     trabajo_db.aplica_iva = trabajo.aplica_iva
     
     # Eliminar gastos existentes
@@ -236,4 +244,13 @@ def obtener_gastos_trabajo(id: int, db: Session = Depends(get_db)):
             "monto_cobrado": float(gasto.monto_cobrado) if gasto.monto_cobrado else float(gasto.monto)
         })
     
-    return resultado
+    # Devolver tanto los gastos como la información del trabajo
+    return {
+        "gastos": resultado,
+        "trabajo": {
+            "id": trabajo.id,
+            "costo": float(trabajo.costo or 0.0),
+            "mano_obra": float(trabajo.mano_obra or 0.0),
+            "markup_repuestos": float(trabajo.markup_repuestos or 0.0)
+        }
+    }

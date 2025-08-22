@@ -12,6 +12,8 @@ class TrabajoSchema(BaseModel):
     descripcion: str
     fecha: date
     costo: float
+    mano_obra: Optional[float] = 0.0  # Monto de mano de obra del trabajo
+    markup_repuestos: Optional[float] = 0.0  # Markup aplicado a los repuestos
     aplica_iva: Optional[bool] = True
     detalle_gastos: List[DetalleGastoSchema]
 
