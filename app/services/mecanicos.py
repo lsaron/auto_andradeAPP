@@ -268,20 +268,38 @@ class MecanicoService:
             raise ValueError("Mecánico no encontrado")
         
         try:
-            # Construir query base sin LIMIT
-            query = db.query(
-                func.count(ComisionMecanico.id).label('trabajos_completados'),
-                func.sum(ComisionMecanico.ganancia_trabajo).label('total_ganancias'),
-                func.sum(ComisionMecanico.monto_comision).label('total_comisiones')
-            ).filter(ComisionMecanico.id_mecanico == mecanico_id)
+            # ✅ CORRECTO: Calcular estadísticas en tiempo real en lugar de usar tabla ComisionMecanico
             
-            # Filtrar por mes si se especifica
-            if mes:
-                query = query.filter(ComisionMecanico.mes_reporte == mes)
+            # Obtener todos los trabajos asignados al mecánico
+            trabajos_mecanico = db.query(TrabajoMecanico).filter(
+                TrabajoMecanico.id_mecanico == mecanico_id
+            ).all()
             
-            stats = query.first()
+            trabajos_completados = len(trabajos_mecanico)
+            total_ganancias = Decimal('0.00')
+            total_comisiones = Decimal('0.00')
             
-            # Crear objeto con estadísticas
+            # Calcular ganancias y comisiones para cada trabajo
+            for trabajo_mecanico in trabajos_mecanico:
+                trabajo = db.query(Trabajo).filter(Trabajo.id == trabajo_mecanico.id_trabajo).first()
+                if trabajo:
+                    # Calcular gastos reales del trabajo
+                    gastos_reales = db.query(func.sum(DetalleGasto.monto)).filter(
+                        DetalleGasto.id_trabajo == trabajo.id
+                    ).scalar() or Decimal('0.00')
+                    
+                    # ✅ CORRECTO: Ganancia base = Mano de Obra - Gastos Reales
+                    mano_obra = Decimal(str(trabajo.mano_obra or 0))
+                    gastos_reales_decimal = Decimal(str(gastos_reales))
+                    ganancia_base = mano_obra - gastos_reales_decimal
+                    
+                    # ✅ CORRECTO: Comisión = 2% sobre la ganancia base (solo si es positiva)
+                    comision = ganancia_base * Decimal('0.02') if ganancia_base > 0 else Decimal('0.00')
+                    
+                    total_ganancias += ganancia_base
+                    total_comisiones += comision
+            
+            # Crear objeto con estadísticas calculadas en tiempo real
             mecanico_con_stats = MecanicoConEstadisticas(
                 id=mecanico.id,
                 id_nacional=mecanico.id_nacional,
@@ -293,9 +311,9 @@ class MecanicoService:
                 activo=mecanico.activo,
                 created_at=mecanico.created_at,
                 updated_at=mecanico.updated_at,
-                trabajos_completados=stats.trabajos_completados or 0,
-                total_ganancias=stats.total_ganancias or Decimal('0.00'),
-                total_comisiones=stats.total_comisiones or Decimal('0.00')
+                trabajos_completados=trabajos_completados,
+                total_ganancias=total_ganancias,
+                total_comisiones=total_comisiones
             )
             
             return mecanico_con_stats

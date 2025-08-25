@@ -280,7 +280,7 @@ def obtener_trabajos_mecanico(
     mecanico_id: int,
     db: Session = Depends(get_db)
 ):
-    """Obtener todos los trabajos realizados por un mecánico específico"""
+    """Obtener los trabajos asignados a un mecánico específico"""
     try:
         # Verificar que el mecánico existe
         mecanico = db.query(MecanicoModel).filter(MecanicoModel.id == mecanico_id).first()
@@ -297,12 +297,18 @@ def obtener_trabajos_mecanico(
         for trabajo_mecanico in trabajos_mecanico:
             trabajo = db.query(Trabajo).filter(Trabajo.id == trabajo_mecanico.id_trabajo).first()
             if trabajo:
-                # Calcular ganancia base (costo total - gastos reales)
+                # Calcular gastos reales del trabajo
                 gastos_reales = db.query(DetalleGasto).filter(
                     DetalleGasto.id_trabajo == trabajo.id
                 ).with_entities(func.sum(DetalleGasto.monto)).scalar() or 0
                 
-                ganancia_base = float(trabajo.costo or 0) - float(gastos_reales)
+                # ✅ CORRECTO: Ganancia base = Mano de Obra - Gastos Reales
+                mano_obra = float(trabajo.mano_obra or 0)
+                gastos_reales_float = float(gastos_reales)
+                ganancia_base = mano_obra - gastos_reales_float
+                
+                # ✅ CORRECTO: Comisión = 2% sobre la ganancia base (solo si es positiva)
+                comision = ganancia_base * 0.02 if ganancia_base > 0 else 0
                 
                 trabajo_info = {
                     "id": trabajo.id,
@@ -310,9 +316,11 @@ def obtener_trabajos_mecanico(
                     "matricula_carro": trabajo.matricula_carro,
                     "descripcion": trabajo.descripcion,
                     "costo": float(trabajo.costo or 0),
+                    "mano_obra": mano_obra,
+                    "total_gastos": gastos_reales_float,
                     "ganancia_base": ganancia_base,
-                    "comision": float(trabajo_mecanico.monto_comision or 0),
-                    "porcentaje_comision": float(trabajo_mecanico.porcentaje_comision or 0)
+                    "comision": comision,
+                    "porcentaje_comision": 2.0  # 2% fijo
                 }
                 trabajos_detallados.append(trabajo_info)
         

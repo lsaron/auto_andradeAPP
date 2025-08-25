@@ -453,18 +453,20 @@ export function WorkOrdersSection() {
     if (selectedMechanics.length === 0) return 0
     
     const manoObra = Number.parseFloat(newOrder.manoObra) || 0
+    const totalExpenses = calculateTotalExpenses()
     
-    // ✅ CORRECTO: Comisión solo sobre la mano de obra (ganancia base del trabajo)
-    const gananciaBase = manoObra
+    // ✅ CORRECTO: Comisión solo sobre la ganancia base (mano de obra - costos reales)
+    const gananciaBase = manoObra - totalExpenses
     
     if (gananciaBase <= 0) return 0
     
-    // 2% de comisión SOLO sobre la mano de obra
+    // 2% de comisión SOLO sobre la ganancia base
     const comisionTotal = gananciaBase * 0.02
     const comisionPorMecanico = comisionTotal / selectedMechanics.length
     
     console.log("🔍 Calculando comisión (lógica corregida):", {
       manoObra,
+      totalExpenses,
       gananciaBase,
       comisionTotal,
       comisionPorMecanico,
@@ -479,19 +481,21 @@ export function WorkOrdersSection() {
     if (selectedMechanics.length === 0) return 0
     
     const manoObra = Number.parseFloat(editOrder.manoObra) || 0
+    const totalExpenses = calculateEditTotalExpenses()
     
-    // ✅ CORRECTO: Comisión solo sobre la mano de obra (ganancia base del trabajo)
-    const gananciaBase = manoObra
+    // ✅ CORRECTO: Comisión solo sobre la ganancia base (mano de obra - costos reales)
+    const gananciaBase = manoObra - totalExpenses
     
     console.log("🔍 Calculando comisión para edición (lógica corregida):", {
       manoObra,
+      totalExpenses,
       gananciaBase,
       selectedMechanics: selectedMechanics.length
     })
     
     if (gananciaBase <= 0) return 0
     
-    // 2% de comisión SOLO sobre la mano de obra
+    // 2% de comisión SOLO sobre la ganancia base
     const comisionTotal = gananciaBase * 0.02
     const comisionPorMecanico = comisionTotal / selectedMechanics.length
     
@@ -1535,92 +1539,6 @@ export function WorkOrdersSection() {
                 />
               </div>
 
-              {/* Mecánicos Asignados */}
-              <div className="space-y-3">
-                <Label className="text-sm font-medium">
-                  Mecánicos Asignados al Trabajo
-                </Label>
-                
-                {isLoadingMechanics ? (
-                  <div className="flex items-center justify-center py-4">
-                    <LoadingSpinner size="sm" />
-                    <span className="ml-2 text-sm text-muted-foreground">Cargando mecánicos...</span>
-                  </div>
-                ) : mechanicsError ? (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-md">
-                    <p className="text-sm text-red-600">{mechanicsError}</p>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={loadMechanics}
-                      className="mt-2"
-                    >
-                      Reintentar
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <Select
-                      isMulti
-                      options={mechanics.map(mechanic => ({
-                        value: mechanic.id,
-                        label: `${mechanic.name} (${mechanic.mechanic_id})`
-                      }))}
-                      onChange={handleMechanicSelection}
-                      placeholder="Seleccionar mecánicos..."
-                      isClearable
-                      className="w-full"
-                      styles={{
-                        control: (base) => ({
-                          ...base,
-                          minHeight: "42px",
-                          fontSize: "14px",
-                        }),
-                      }}
-                    />
-                    
-                    {selectedMechanics.length > 0 && (
-                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Users className="h-4 w-4 text-blue-600" />
-                          <span className="text-sm font-medium text-blue-800">
-                            Mecánicos Seleccionados: {selectedMechanics.length}
-                          </span>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          {selectedMechanics.map((selected, index) => {
-                            const mechanic = mechanics.find(m => m.id === selected.id_mecanico.toString())
-                            return (
-                              <div key={index} className="flex items-center justify-between text-sm">
-                                <span className="text-blue-700">
-                                  {mechanic ? `${mechanic.name} (${mechanic.mechanic_id})` : 'Mecánico no encontrado'}
-                                </span>
-                                <Badge variant="outline" className="text-xs">
-                                  {selected.porcentaje_comision}% comisión
-                                </Badge>
-                              </div>
-                            )
-                          })}
-                        </div>
-                        
-                        {newOrder.totalCost && (
-                          <div className="mt-3 pt-2 border-t border-blue-200">
-                            <div className="flex items-center gap-2 text-sm">
-                              <Wrench className="h-4 w-4 text-blue-600" />
-                              <span className="text-blue-700">Comisión por mecánico:</span>
-                              <span className="font-medium text-blue-800">
-                                ₡ {calculateCommissionPreview().toLocaleString("es-CR")}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
               {/* Expenses Section */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -1715,6 +1633,10 @@ export function WorkOrdersSection() {
                 )}
               </div>
 
+
+
+
+
               {/* Mano de Obra */}
               <div className="space-y-2">
                 <Label htmlFor="manoObra" className="text-sm font-medium">
@@ -1799,6 +1721,94 @@ export function WorkOrdersSection() {
                   </div>
                 )}
               </div>
+
+              {/* Mecánicos Asignados */}
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">
+                  Mecánicos Asignados al Trabajo
+                </Label>
+                
+                {isLoadingMechanics ? (
+                  <div className="flex items-center justify-center py-4">
+                    <LoadingSpinner size="sm" />
+                    <span className="ml-2 text-sm text-muted-foreground">Cargando mecánicos...</span>
+                  </div>
+                ) : mechanicsError ? (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                    <p className="text-sm text-red-600">{mechanicsError}</p>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={loadMechanics}
+                      className="mt-2"
+                    >
+                      Reintentar
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <Select
+                      isMulti
+                      options={mechanics.map(mechanic => ({
+                        value: mechanic.id,
+                        label: `${mechanic.name} (${mechanic.mechanic_id})`
+                      }))}
+                      onChange={handleMechanicSelection}
+                      placeholder="Seleccionar mecánicos..."
+                      isClearable
+                      className="w-full"
+                      styles={{
+                        control: (base) => ({
+                          ...base,
+                          minHeight: "42px",
+                          fontSize: "14px",
+                        }),
+                      }}
+                    />
+                    
+                    {selectedMechanics.length > 0 && (
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Users className="h-4 w-4 text-blue-600" />
+                          <span className="text-sm font-medium text-blue-800">
+                            Mecánicos Seleccionados: {selectedMechanics.length}
+                          </span>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          {selectedMechanics.map((selected, index) => {
+                            const mechanic = mechanics.find(m => m.id === selected.id_mecanico.toString())
+                            return (
+                              <div key={index} className="flex items-center justify-between text-sm">
+                                <span className="text-blue-700">
+                                  {mechanic ? `${mechanic.name} (${mechanic.mechanic_id})` : 'Mecánico no encontrado'}
+                                </span>
+                                <Badge variant="outline" className="text-xs">
+                                  {selected.porcentaje_comision}% comisión
+                                </Badge>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        
+                        {/* Preview de Comisiones */}
+                        {(newOrder.manoObra || newOrder.expenses.length > 0) && (
+                          <div className="mt-3 pt-2 border-t border-blue-200">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-blue-700">Comisión por mecánico:</span>
+                              <span className="font-medium text-blue-800">
+                                ₡ {calculateCommissionPreview().toLocaleString("es-CR")}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+
 
               {/* Costo Total (Campo oculto para compatibilidad) */}
               <input 
@@ -2010,68 +2020,96 @@ export function WorkOrdersSection() {
                 )}
               </div>
 
-              {/* Total Cost */}
+              {/* Mano de Obra */}
               <div className="space-y-2">
-                <Label htmlFor="editTotalCost" className="text-sm font-medium">
-                  Costo Total Cobrado al Cliente
+                <Label htmlFor="editManoObra" className="text-sm font-medium">
+                  Mano de Obra
                 </Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm text-gray-500">₡</span>
                   <Input
-                    id="editTotalCost"
+                    id="editManoObra"
                     type="text"
                     inputMode="decimal"
-                    value={editOrder.totalCost}
-                    onChange={(e) => setEditOrder({ ...editOrder, totalCost: e.target.value })}
-                    placeholder="0.00 (opcional para proyectos en curso)"
+                    value={editOrder.manoObra}
+                    onChange={(e) => setEditOrder({ ...editOrder, manoObra: e.target.value })}
+                    placeholder="0.00"
                     className="pl-8"
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Deja vacío si es un proyecto en curso que acumulará gastos gradualmente
+                  Costo de la mano de obra del mecánico
                 </p>
 
                 {/* Profit Calculation Display */}
-                {editOrder.totalCost && (
+                {(editOrder.manoObra || editOrder.expenses.length > 0) && (
                   <div className="mt-2 p-3 bg-blue-50 rounded-md">
                     <div className="text-sm space-y-1">
                       <div className="flex justify-between">
-                        <span>Costo Total:</span>
+                        <span>Mano de Obra:</span>
                         <span className="font-medium">
-                          ₡ {Number.parseFloat(editOrder.totalCost || "0").toLocaleString("es-CR")}
+                          ₡ {Number.parseFloat(editOrder.manoObra || "0").toLocaleString("es-CR")}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Costo repuestos:</span>
+                        <span>Costos totales:</span>
                         <span className="text-red-600">₡ {calculateEditTotalExpenses().toLocaleString("es-CR")}</span>
                       </div>
-                      <div className="flex justify-between text-blue-600">
+                      <div className="flex justify-between text-green-600">
+                        <span>Precio cliente:</span>
+                        <span className="font-medium">₡ {(() => {
+                          // Precio cliente = suma de todos los precios cobrados al cliente
+                          return editOrder.expenses.reduce((total, expense) => {
+                            const precioCliente = expense.amountCharged && expense.amountCharged !== "" 
+                              ? Number.parseFloat(expense.amountCharged) 
+                              : Number.parseFloat(expense.amount) || 0;
+                            return total + precioCliente;
+                          }, 0);
+                        })().toLocaleString("es-CR")}</span>
+                      </div>
+                      <div className="flex justify-between text-blue-600 pt-1 border-t">
                         <span>Ganancia Base:</span>
                         <span className="font-medium">
-                          ₡ {(Number.parseFloat(editOrder.manoObra || "0")).toLocaleString("es-CR")}
+                          ₡ {(Number.parseFloat(editOrder.manoObra || "0") - calculateEditTotalExpenses()).toLocaleString("es-CR")}
                         </span>
                       </div>
-                      {calculateEditTotalMarkup() > 0 && (
-                        <div className="flex justify-between text-green-600">
-                          <span>Añadido por repuestos:</span>
-                          <span className="font-medium">+₡ {calculateEditTotalMarkup().toLocaleString("es-CR")}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between font-medium pt-1 border-t">
-                        <span>Ganancia Total Estimada:</span>
-                        <span
-                          className={`${(Number.parseFloat(editOrder.manoObra || "0") + calculateEditTotalMarkup()) >= 0 ? "text-green-600" : "text-red-600"}`}
-                        >
-                          ₡{" "}
-                          {(
-                            Number.parseFloat(editOrder.manoObra || "0") + calculateEditTotalMarkup()
-                          ).toLocaleString("es-CR")}
+                      <div className="flex justify-between text-green-600 pt-1 border-t">
+                        <span>Ganancia:</span>
+                        <span className="font-medium">
+                          ₡ {(() => {
+                            const manoObra = Number.parseFloat(editOrder.manoObra || "0");
+                            const gastos = calculateEditTotalExpenses();
+                            const gananciaBase = manoObra - gastos;
+                            const markup = calculateEditTotalMarkup();
+                            return gananciaBase + markup;
+                          })().toLocaleString("es-CR")}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-purple-600 pt-1 border-t">
+                        <span>Costo Total:</span>
+                        <span className="font-medium">
+                          ₡ {(() => {
+                            const manoObra = Number.parseFloat(editOrder.manoObra || "0");
+                            const precioCliente = editOrder.expenses.reduce((total, expense) => {
+                              const precio = expense.amountCharged && expense.amountCharged !== "" 
+                                ? Number.parseFloat(expense.amountCharged) 
+                                : Number.parseFloat(expense.amount) || 0;
+                              return total + precio;
+                            }, 0);
+                            return precioCliente + manoObra;
+                          })().toLocaleString("es-CR")}
                         </span>
                       </div>
                     </div>
                   </div>
                 )}
               </div>
+
+              {/* Costo Total (Campo oculto para compatibilidad) */}
+              <input 
+                type="hidden" 
+                value={calculateTotalCost(Number.parseFloat(editOrder.manoObra || "0"), editOrder.expenses)}
+              />
 
               {/* Mechanics Section */}
               <div className="space-y-4">
@@ -2111,7 +2149,7 @@ export function WorkOrdersSection() {
                     </div>
                     
                     {/* Commission Preview */}
-                    {editOrder.totalCost && (
+                    {editOrder.manoObra && (
                       <div className="mt-3 pt-2 border-t border-blue-200">
                         <div className="flex items-center gap-2 text-sm">
                           <Wrench className="h-4 w-4 text-blue-600" />
@@ -2875,14 +2913,27 @@ export function WorkOrdersSection() {
                                   {mechanic.nombre_mecanico} ({mechanic.porcentaje_comision}%)
                                 </span>
                                 <span className="text-sm font-semibold text-red-600">
-                                  {formatCurrency(mechanic.monto_comision)}
+                                                                      {(() => {
+                                      // Calcular comisión correctamente: 2% sobre la ganancia base
+                                      const manoObra = selectedWorkOrder.manoObra || 0;
+                                      const gananciaBase = manoObra - selectedWorkOrder.expenses;
+                                      const comisionTotal = gananciaBase * 0.02;
+                                      const comisionPorMecanico = comisionTotal / (selectedWorkOrder.assignedMechanics?.length || 1);
+                                      return formatCurrency(comisionPorMecanico);
+                                    })()}
                                 </span>
                               </div>
                             ))}
                             <div className="flex justify-between items-center py-1 px-2 bg-red-100 rounded border border-red-200">
                               <span className="text-sm font-medium text-red-800">Total Comisiones:</span>
                               <span className="text-sm font-bold text-red-800">
-                                {formatCurrency(selectedWorkOrder.assignedMechanics.reduce((total, mechanic) => total + mechanic.monto_comision, 0))}
+                                {(() => {
+                                  // Calcular comisión total correctamente: 2% sobre la ganancia base
+                                  const manoObra = selectedWorkOrder.manoObra || 0;
+                                  const gananciaBase = manoObra - selectedWorkOrder.expenses;
+                                  const comisionTotal = gananciaBase * 0.02;
+                                  return formatCurrency(comisionTotal);
+                                })()}
                               </span>
                             </div>
                           </div>
@@ -2985,15 +3036,31 @@ export function WorkOrdersSection() {
                                     {mechanic.nombre_mecanico} ({mechanic.porcentaje_comision}%)
                                   </span>
                                   <span className="text-sm font-semibold text-red-600">
-                                    {formatCurrency(mechanic.monto_comision)}
+                                    {(() => {
+                                      // Calcular comisión correctamente: 2% sobre la ganancia base
+                                      const manoObra = selectedWorkOrder.manoObra || 0;
+                                      const gananciaBase = manoObra - selectedWorkOrder.expenses;
+                                      const comisionTotal = gananciaBase * 0.02;
+                                      const comisionPorMecanico = comisionTotal / (selectedWorkOrder.assignedMechanics?.length || 1);
+                                      return formatCurrency(comisionPorMecanico);
+                                    })()}
                                   </span>
                                 </div>
                               ))}
                               <div className="flex justify-between items-center py-1 px-2 bg-red-100 rounded border border-red-200">
                                 <span className="text-sm font-medium text-red-800">Total Comisiones:</span>
                                 <span className="text-sm font-bold text-red-800">
-                                  {formatCurrency(selectedWorkOrder.assignedMechanics.reduce((total, mechanic) => total + mechanic.monto_comision, 0))}
+                                  {(() => {
+                                    // Calcular comisión total correctamente: 2% sobre la ganancia base
+                                    const manoObra = selectedWorkOrder.manoObra || 0;
+                                    const gananciaBase = manoObra - selectedWorkOrder.expenses;
+                                    const comisionTotal = gananciaBase * 0.02;
+                                    return formatCurrency(comisionTotal);
+                                  })()}
                                 </span>
+                              </div>
+                              <div className="text-xs text-red-600 px-2 py-1 bg-red-50 rounded">
+                                <strong>Nota:</strong> Las comisiones se calculan al 2% sobre la ganancia base (Mano de Obra - Costos Reales)
                               </div>
                             </div>
                           ) : (

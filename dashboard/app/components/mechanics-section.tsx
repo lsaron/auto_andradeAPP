@@ -50,13 +50,18 @@ export function MechanicsSection() {
   const [editMechanic, setEditMechanic] = useState<MechanicCreate>({
     name: "",
   })
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   type MechanicJob = {
+    id: number
     fecha: string
     matricula_carro: string
     descripcion: string
     costo: number
+    mano_obra?: number
+    total_gastos?: number
     ganancia_base?: number
     comision?: number
+    gastos_detallados?: any[]
   }
   
   const [mechanicJobs, setMechanicJobs] = useState<MechanicJob[]>([])
@@ -85,14 +90,19 @@ export function MechanicsSection() {
       try {
         setLoading(true)
         setError(null)
+        console.log("🔍 Cargando mecánicos desde la API...")
         const data = await mecanicosApi.getAll()
+        console.log("🔍 Datos de mecánicos obtenidos:", data)
         
         // Para cada mecánico, obtener sus estadísticas y mapear a la interfaz Mechanic
         const mecanicosConStats = await Promise.all(
           data.map(async (mecanico) => {
             try {
+              console.log(`🔍 Obteniendo estadísticas para mecánico ${mecanico.id}...`)
               const stats = await mecanicosApi.getStats(mecanico.id)
-              return {
+              console.log(`🔍 Estadísticas para mecánico ${mecanico.id}:`, stats)
+              
+              const mecanicoMapeado = {
                 id: mecanico.id.toString(),
                 name: mecanico.nombre,
                 mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
@@ -103,7 +113,11 @@ export function MechanicsSection() {
                 created_at: mecanico.created_at || new Date().toISOString(),
                 updated_at: mecanico.updated_at || new Date().toISOString()
               }
+              
+              console.log(`🔍 Mecánico ${mecanico.id} mapeado:`, mecanicoMapeado)
+              return mecanicoMapeado
             } catch (err) {
+              console.error(`❌ Error al obtener estadísticas para mecánico ${mecanico.id}:`, err)
               // Si no se pueden obtener estadísticas, usar valores por defecto
               return {
                 id: mecanico.id.toString(),
@@ -120,10 +134,12 @@ export function MechanicsSection() {
           })
         )
         
+        console.log("🔍 Todos los mecánicos con estadísticas:", mecanicosConStats)
         setMechanics(mecanicosConStats)
+        setLastUpdated(new Date())
       } catch (err) {
+        console.error("❌ Error al cargar mecánicos:", err)
         setError("Error al cargar los mecánicos.")
-        console.error(err)
       } finally {
         setLoading(false)
       }
@@ -137,14 +153,19 @@ export function MechanicsSection() {
     try {
       setLoading(true)
       setError(null)
+      console.log("🔄 Recargando mecánicos...")
       const data = await mecanicosApi.getAll()
+      console.log("🔄 Datos de mecánicos obtenidos:", data)
       
       // Para cada mecánico, obtener sus estadísticas y mapear a la interfaz Mechanic
       const mecanicosConStats = await Promise.all(
         data.map(async (mecanico) => {
           try {
+            console.log(`🔄 Obteniendo estadísticas para mecánico ${mecanico.id}...`)
             const stats = await mecanicosApi.getStats(mecanico.id)
-            return {
+            console.log(`🔄 Estadísticas para mecánico ${mecanico.id}:`, stats)
+            
+            const mecanicoMapeado = {
               id: mecanico.id.toString(),
               name: mecanico.nombre,
               mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
@@ -155,7 +176,11 @@ export function MechanicsSection() {
               created_at: mecanico.created_at || new Date().toISOString(),
               updated_at: mecanico.updated_at || new Date().toISOString()
             }
+            
+            console.log(`🔄 Mecánico ${mecanico.id} mapeado:`, mecanicoMapeado)
+            return mecanicoMapeado
           } catch (err) {
+            console.error(`❌ Error al obtener estadísticas para mecánico ${mecanico.id}:`, err)
             // Si no se pueden obtener estadísticas, usar valores por defecto
             return {
               id: mecanico.id.toString(),
@@ -172,10 +197,12 @@ export function MechanicsSection() {
         })
       )
       
+      console.log("🔄 Todos los mecánicos con estadísticas:", mecanicosConStats)
       setMechanics(mecanicosConStats)
+      setLastUpdated(new Date())
     } catch (err) {
+      console.error("❌ Error al recargar mecánicos:", err)
       setError("Error al recargar los mecánicos.")
-      console.error(err)
     } finally {
       setLoading(false)
     }
@@ -197,6 +224,18 @@ export function MechanicsSection() {
     const totalMechanics = mechanics.length
     const totalJobs = mechanics.reduce((sum, mechanic) => sum + mechanic.jobs_completed, 0)
     const totalCommissions = mechanics.reduce((sum, mechanic) => sum + mechanic.total_commission, 0)
+
+    console.log("📊 Calculando estadísticas:", {
+      totalMechanics,
+      totalJobs,
+      totalCommissions,
+      mechanics: mechanics.map(m => ({
+        id: m.id,
+        name: m.name,
+        jobs_completed: m.jobs_completed,
+        total_commission: m.total_commission
+      }))
+    })
 
     return {
       totalMechanics,
@@ -320,13 +359,37 @@ export function MechanicsSection() {
         console.log(`🔍 Tipo de datos:`, typeof jobsData)
         console.log(`🔍 Es array:`, Array.isArray(jobsData))
         console.log(`🔍 Longitud:`, jobsData?.length || 0)
-        setMechanicJobs(jobsData)
         
-        if (jobsData.length > 0) {
-          console.log(`🔍 Procesando ${jobsData.length} trabajos`)
+        // ✅ El backend ya calcula correctamente las comisiones
+        // Solo necesitamos procesar los datos para mostrar la información
+        const jobsWithDetails = jobsData.map((job: any) => {
+          console.log(`🔍 Procesando trabajo ${job.id}:`, {
+            id: job.id,
+            fecha: job.fecha,
+            matricula: job.matricula_carro,
+            descripcion: job.descripcion,
+            costo: job.costo,
+            mano_obra: job.mano_obra,
+            total_gastos: job.total_gastos,
+            ganancia_base: job.ganancia_base,
+            comision: job.comision
+          })
+          
+          return {
+            ...job,
+            // Los campos ya vienen calculados correctamente del backend
+            ganancia_base: job.ganancia_base || 0,
+            comision: job.comision || 0
+          }
+        })
+        
+        setMechanicJobs(jobsWithDetails)
+        
+        if (jobsWithDetails.length > 0) {
+          console.log(`🔍 Procesando ${jobsWithDetails.length} trabajos con detalles`)
           
           // Extraer años únicos de los trabajos para el filtro
-          const yearsSet = new Set<string>(jobsData.map((job: any) => 
+          const yearsSet = new Set<string>(jobsWithDetails.map((job: any) => 
             new Date(job.fecha as string).getFullYear().toString()
           ))
           const years = Array.from(yearsSet).sort((a: string, b: string) => parseInt(b) - parseInt(a))
@@ -447,9 +510,14 @@ export function MechanicsSection() {
           <p className="text-muted-foreground">Gestiona la información de los mecánicos del taller</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={reloadMechanics} disabled={loading}>
+          <Button 
+            variant="outline" 
+            onClick={reloadMechanics} 
+            disabled={loading}
+            className="min-w-[120px]"
+          >
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Actualizar
+            {loading ? 'Actualizando...' : 'Actualizar'}
           </Button>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
@@ -502,7 +570,16 @@ export function MechanicsSection() {
             <UserCog className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalMechanics}</div>
+            <div className="text-2xl font-bold">
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <LoadingSpinner size="sm" />
+                  <span className="text-sm text-muted-foreground">Actualizando...</span>
+                </div>
+              ) : (
+                stats.totalMechanics
+              )}
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -511,7 +588,16 @@ export function MechanicsSection() {
             <Wrench className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalJobs}</div>
+            <div className="text-2xl font-bold">
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <LoadingSpinner size="sm" />
+                  <span className="text-sm text-muted-foreground">Actualizando...</span>
+                </div>
+              ) : (
+                stats.totalJobs
+              )}
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -520,10 +606,31 @@ export function MechanicsSection() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₡{stats.totalCommissions.toLocaleString()}</div>
+            <div className="text-2xl font-bold">
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <LoadingSpinner size="sm" />
+                  <span className="text-sm text-muted-foreground">Actualizando...</span>
+                </div>
+              ) : (
+                `₡${stats.totalCommissions.toLocaleString()}`
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Información de actualización */}
+      {lastUpdated && (
+        <div className="text-center text-sm text-muted-foreground">
+          <p>
+            📊 Estadísticas actualizadas por última vez: {lastUpdated.toLocaleString('es-ES')}
+          </p>
+          <p className="text-xs mt-1">
+            Las comisiones se calculan al 2% sobre la ganancia base (Mano de Obra - Costos Reales)
+          </p>
+        </div>
+      )}
 
       {/* Search */}
       <div className="flex items-center space-x-2">
@@ -560,6 +667,7 @@ export function MechanicsSection() {
                   <TableHead>ID Mecánico</TableHead>
                   <TableHead>Nombre</TableHead>
                   <TableHead>Trabajos Completados</TableHead>
+                  <TableHead>Ganancias Generadas</TableHead>
                   <TableHead>Comisiones</TableHead>
                   <TableHead>Fecha de Contratación</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
@@ -575,6 +683,7 @@ export function MechanicsSection() {
                     <TableCell>
                       <Badge variant="secondary">{mechanic.jobs_completed || 0}</Badge>
                     </TableCell>
+                    <TableCell>₡{(mechanic.total_profit || 0).toLocaleString()}</TableCell>
                     <TableCell>₡{(mechanic.total_commission || 0).toLocaleString()}</TableCell>
                     <TableCell>{mechanic.hire_date ? new Date(mechanic.hire_date).toLocaleDateString() : 'N/A'}</TableCell>
                     <TableCell className="text-right">
@@ -654,21 +763,20 @@ export function MechanicsSection() {
                 </div>
 
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Comisiones Generadas</p>
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-green-600" />
-                    <span className="text-lg font-semibold text-green-600">
-                      ₡{selectedMechanic.total_commission.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-
-                <div>
                   <p className="text-sm font-medium text-gray-600">Ganancias Generadas</p>
                   <div className="flex items-center gap-2">
                     <TrendingUp className="h-4 w-4 text-emerald-600" />
                     <span className="text-lg font-semibold text-emerald-600">
                       ₡{selectedMechanic.total_profit.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Comisiones Generadas</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-semibold text-green-600">
+                      ₡{selectedMechanic.total_commission.toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -740,6 +848,9 @@ export function MechanicsSection() {
                   <strong>Trabajos Completados:</strong> {selectedMechanic.jobs_completed}
                 </p>
                 <p>
+                  <strong>Ganancias Generadas:</strong> ₡{selectedMechanic.total_profit.toLocaleString()}
+                </p>
+                <p>
                   <strong>Comisiones:</strong> ₡{selectedMechanic.total_commission.toLocaleString()}
                 </p>
               </div>
@@ -768,7 +879,7 @@ export function MechanicsSection() {
             <div className="space-y-6">
               {/* Información del mecánico */}
               <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
                     <p className="text-sm font-medium text-blue-900">Nombre</p>
                     <p className="text-lg font-semibold text-blue-700">{selectedMechanic.name}</p>
@@ -781,6 +892,40 @@ export function MechanicsSection() {
                     <p className="text-sm font-medium text-blue-900">Trabajos Completados</p>
                     <p className="text-lg font-semibold text-blue-700">
                       {selectedMechanic.jobs_completed || 0}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">Fecha de Contratación</p>
+                    <p className="text-lg font-semibold text-blue-700">
+                      {selectedMechanic.created_at ? new Date(selectedMechanic.created_at).toLocaleDateString('es-CR') : 'N/A'}
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Segunda fila con información adicional */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">Total Mano de Obra</p>
+                    <p className="text-lg font-semibold text-green-600">
+                      ₡{filteredJobs.reduce((total, job) => total + (Number(job.mano_obra) || 0), 0).toLocaleString('es-CR')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">Total Gastos Reales</p>
+                    <p className="text-lg font-semibold text-red-600">
+                      ₡{filteredJobs.reduce((total, job) => total + (Number(job.total_gastos) || 0), 0).toLocaleString('es-CR')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">Total Ganancia Base</p>
+                    <p className="text-lg font-semibold text-blue-600">
+                      ₡{filteredJobs.reduce((total, job) => total + (Number(job.ganancia_base) || 0), 0).toLocaleString('es-CR')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">Total Comisiones</p>
+                    <p className="text-lg font-semibold text-purple-600">
+                      ₡{filteredJobs.reduce((total, job) => total + (Number(job.comision) || 0), 0).toLocaleString('es-CR')}
                     </p>
                   </div>
                 </div>
@@ -883,40 +1028,70 @@ export function MechanicsSection() {
                   </div>
                                  ) : filteredJobs.length > 0 ? (
                   <div className="border rounded-lg overflow-hidden">
+                    {/* Nota explicativa sobre comisiones */}
+                    <div className="bg-blue-50 border-b border-blue-200 p-3">
+                      <div className="flex items-center gap-2 text-sm text-blue-700">
+                        <DollarSign className="h-4 w-4" />
+                        <span className="font-medium">Nota sobre Comisiones:</span>
+                      </div>
+                      <p className="text-xs text-blue-600 mt-1">
+                        Las comisiones se calculan al 2% sobre la ganancia base (Mano de Obra - Costos Reales de repuestos)
+                      </p>
+                    </div>
+                    
                     <Table>
                       <TableHeader>
                         <TableRow>
                           <TableHead>Fecha</TableHead>
                           <TableHead>Matrícula</TableHead>
                           <TableHead>Descripción</TableHead>
-                          <TableHead className="text-right">Monto Total</TableHead>
+                          <TableHead className="text-right">Mano de Obra</TableHead>
+                          <TableHead className="text-right">Gastos Reales</TableHead>
                           <TableHead className="text-right">Ganancia Base</TableHead>
-                          <TableHead className="text-right">Comisión</TableHead>
+                          <TableHead className="text-right">Comisión (2%)</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                                                 {filteredJobs.map((job, index) => (
-                          <TableRow key={index}>
-                            <TableCell>
-                              {new Date(job.fecha).toLocaleDateString('es-CR')}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{job.matricula_carro}</Badge>
-                            </TableCell>
-                            <TableCell className="max-w-xs truncate">
-                              {job.descripcion}
-                            </TableCell>
-                            <TableCell className="text-right font-medium">
-                              ₡{Number(job.costo).toLocaleString('es-CR')}
-                            </TableCell>
-                            <TableCell className="text-right font-medium text-green-600">
-                              ₡{Number(job.ganancia_base || 0).toLocaleString('es-CR')}
-                            </TableCell>
-                            <TableCell className="text-right font-medium text-blue-600">
-                              ₡{Number(job.comision || 0).toLocaleString('es-CR')}
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {filteredJobs.map((job, index) => {
+                          // Debug: Log de los datos del trabajo
+                          console.log(`🔍 Trabajo ${index}:`, {
+                            id: job.id,
+                            fecha: job.fecha,
+                            matricula: job.matricula_carro,
+                            descripcion: job.descripcion,
+                            costo: job.costo,
+                            mano_obra: job.mano_obra,
+                            total_gastos: job.total_gastos,
+                            ganancia_base: job.ganancia_base,
+                            comision: job.comision
+                          })
+                          
+                          return (
+                            <TableRow key={index}>
+                              <TableCell>
+                                {new Date(job.fecha).toLocaleDateString('es-CR')}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{job.matricula_carro}</Badge>
+                              </TableCell>
+                              <TableCell className="max-w-xs truncate">
+                                {job.descripcion}
+                              </TableCell>
+                              <TableCell className="text-right font-medium text-green-600">
+                                ₡{Number(job.mano_obra || 0).toLocaleString('es-CR')}
+                              </TableCell>
+                              <TableCell className="text-right font-medium text-red-600">
+                                ₡{Number(job.total_gastos || 0).toLocaleString('es-CR')}
+                              </TableCell>
+                              <TableCell className="text-right font-medium text-blue-600">
+                                ₡{Number(job.ganancia_base || 0).toLocaleString('es-CR')}
+                              </TableCell>
+                              <TableCell className="text-right font-medium text-purple-600">
+                                ₡{Number(job.comision || 0).toLocaleString('es-CR')}
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
                       </TableBody>
                     </Table>
                   </div>
