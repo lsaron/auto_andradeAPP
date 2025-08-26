@@ -78,7 +78,8 @@ def test_asignacion_mecanicos():
             print(f"✅ Trabajo creado con ID: {trabajo_id}")
             print(f"   Costo: ₡{trabajo['costo']:,}")
             print(f"   Gastos: ₡{sum(g['monto'] for g in trabajo_data['detalle_gastos']):,}")
-            print(f"   Ganancia esperada: ₡{trabajo['costo'] - sum(g['monto'] for g in trabajo_data['detalle_gastos']):,}")
+            print(f"   Ganancia total esperada: ₡{trabajo['costo'] - sum(g['monto'] for g in trabajo_data['detalle_gastos']):,}")
+            print(f"   Ganancia base para comisiones: ₡{trabajo['mano_obra'] - sum(g['monto'] for g in trabajo_data['detalle_gastos']):,}")
         else:
             print(f"❌ Error al crear trabajo: {response.status_code}")
             print(response.text)

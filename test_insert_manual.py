@@ -60,9 +60,10 @@ def main():
             print(f"🔍 Probando con trabajo ID: {trabajo_id} - {trabajo_desc} - Costo: {trabajo_costo}")
             print(f"🔍 Probando con mecánico ID: {mecanico_id} - {mecanico_nombre}")
             
-            # Calcular comisión (2% del costo)
+            # Calcular comisión (2% del costo - solo para test, en producción se usa ganancia base)
             comision = Decimal(str(trabajo_costo)) * Decimal('0.02')
-            print(f"🔍 Comisión calculada: {comision}")
+            print(f"🔍 Comisión calculada (test): {comision}")
+            print(f"⚠️  NOTA: En producción, las comisiones se calculan sobre la ganancia base (mano de obra - gastos)")
             
             # Probar inserción en trabajos_mecanicos
             try:
@@ -104,7 +105,7 @@ def main():
                 """), {
                     "trabajo_id": trabajo_id,
                     "mecanico_id": mecanico_id,
-                    "ganancia": Decimal(str(trabajo_costo)),  # Por ahora usamos el costo como ganancia
+                    "ganancia": Decimal(str(trabajo_costo)),  # Solo para test - en producción es ganancia base
                     "porcentaje": Decimal('2.00'),
                     "monto": comision,
                     "mes": datetime.now(timezone.utc).strftime('%Y-%m')

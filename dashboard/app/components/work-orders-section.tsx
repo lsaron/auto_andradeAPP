@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { ErrorMessage } from "@/components/ui/error-message"
-import { Edit, Eye, Plus, Trash2, Search, X, Calendar, Car, FileText, Printer, Coins, Users, Wrench } from "lucide-react"
+import { Edit, Eye, Plus, Trash2, Search, X, Calendar, Car, FileText, Printer, Coins, Users, Wrench, AlertTriangle } from "lucide-react"
 import Select from "react-select"
 import { mecanicosApi } from "@/lib/api-client"
 import type { Mechanic, AsignacionMecanico } from "@/lib/types"
@@ -255,36 +255,39 @@ export function WorkOrdersSection() {
 
   // Función para calcular el costo total automáticamente
   const calculateTotalCost = (manoObra: number, expenses: { id: string; item: string; amount: string; amountCharged: string }[]) => {
-    const totalGastos = expenses.reduce((sum, expense) => {
+    const totalGastosCobrados = expenses.reduce((sum, expense) => {
       const costoReal = parseFloat(expense.amount) || 0;
-      return sum + costoReal;
+      const precioCliente = expense.amountCharged && expense.amountCharged !== "" 
+        ? parseFloat(expense.amountCharged) 
+        : costoReal;
+      return sum + precioCliente;
     }, 0);
     
-    // El costo total es solo mano de obra + gastos reales
-    // NO incluir el markup, ya que eso es ganancia, no costo
-    return manoObra + totalGastos;
+    // El costo total es mano de obra + gastos cobrados al cliente
+    return manoObra + totalGastosCobrados;
   };
 
   // Función para calcular el costo total de una orden existente
   const calculateOrderTotalCost = (order: WorkOrder) => {
     // Si la orden ya tiene los nuevos campos, usarlos
     if (order.manoObra !== undefined && order.markupRepuestos !== undefined) {
-      // El costo total es solo mano de obra + gastos reales
+      // El costo total es mano de obra + gastos cobrados al cliente
       return (order.manoObra || 0) + (order.expenses || 0);
     }
     
     // Si no tiene los nuevos campos, calcular basándose en los datos existentes
     if (order.expenseDetails && order.expenseDetails.length > 0) {
-      const totalGastos = order.expenseDetails.reduce((sum, expense) => {
+      const totalGastosCobrados = order.expenseDetails.reduce((sum, expense) => {
         const costoReal = parseFloat(expense.amount) || 0;
-        return sum + costoReal;
+        const precioCliente = parseFloat(expense.amountCharged || expense.amount) || costoReal;
+        return sum + precioCliente;
       }, 0);
       
       // Si no hay mano de obra explícita, asumimos que la ganancia es la mano de obra
       const manoObra = order.profit || 0;
       
-      // El costo total es solo mano de obra + gastos reales
-      return manoObra + totalGastos;
+      // El costo total es mano de obra + gastos cobrados al cliente
+      return manoObra + totalGastosCobrados;
     }
     
     // Fallback: usar el totalCost existente
@@ -515,9 +518,16 @@ export function WorkOrdersSection() {
         const manoObra = Number.parseFloat(newOrder.manoObra) || 0
         const totalExpenses = calculateTotalExpenses()
         const totalMarkup = calculateTotalMarkup()
-        // El costo total es solo mano de obra + gastos reales
-        // NO incluir el markup, ya que eso es ganancia, no costo
-        const costoTotalCalculado = manoObra + totalExpenses
+        // Calcular gastos cobrados al cliente (costo real + markup)
+        const gastosCobradosAlCliente = newOrder.expenses.reduce((total, expense) => {
+          const costoReal = Number.parseFloat(expense.amount) || 0
+          const precioCliente = expense.amountCharged && expense.amountCharged !== "" 
+            ? Number.parseFloat(expense.amountCharged) 
+            : costoReal
+          return total + precioCliente
+        }, 0)
+        // El costo total es mano de obra + gastos cobrados al cliente
+        const costoTotalCalculado = manoObra + gastosCobradosAlCliente
         
         // Log de los datos que se van a enviar
         const datosTrabajo = {
@@ -630,9 +640,16 @@ export function WorkOrdersSection() {
         const manoObra = Number.parseFloat(editOrder.manoObra) || 0
         const totalExpensesEdit = calculateEditTotalExpenses()
         const totalMarkupEdit = calculateEditTotalMarkup()
-        // El costo total es solo mano de obra + gastos reales
-        // NO incluir el markup, ya que eso es ganancia, no costo
-        const costoTotalCalculado = manoObra + totalExpensesEdit
+        // Calcular gastos cobrados al cliente (costo real + markup)
+        const gastosCobradosAlCliente = editOrder.expenses.reduce((total, expense) => {
+          const costoReal = Number.parseFloat(expense.amount) || 0
+          const precioCliente = expense.amountCharged && expense.amountCharged !== "" 
+            ? Number.parseFloat(expense.amountCharged) 
+            : costoReal
+          return total + precioCliente
+        }, 0)
+        // El costo total es mano de obra + gastos cobrados al cliente
+        const costoTotalCalculado = manoObra + gastosCobradosAlCliente
 
         // Extract the numeric ID from the work order ID (e.g., "WO-001" -> 1)
         const workOrderId = parseInt(editOrder.id.replace("WO-", ""))
@@ -665,28 +682,32 @@ export function WorkOrdersSection() {
           throw new Error(errorData.detail || "Error al actualizar trabajo")
         }
 
-        // Si hay mecánicos seleccionados, asignarlos al trabajo
-        if (selectedMechanics.length > 0) {
-          try {
-            // Usar el endpoint de actualización de comisiones para edición
-            const actualizacionResponse = await fetch(`http://localhost:8000/api/mecanicos/trabajos/${workOrderId}/actualizar-comisiones`, {
-              method: "PUT",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify(selectedMechanics),
-            })
-            
-            if (actualizacionResponse.ok) {
-              const resultado = await actualizacionResponse.json()
-              console.log("✅ Comisiones actualizadas para el trabajo:", resultado)
-            } else {
-              console.error("❌ Error al actualizar comisiones:", actualizacionResponse.status)
-            }
-          } catch (error) {
-            console.error("❌ Error al actualizar comisiones:", error)
-            // No fallar si no se pueden actualizar comisiones, solo loguear el error
+        // Siempre actualizar comisiones (incluso si no hay mecánicos seleccionados)
+        try {
+          console.log(`🔍 Actualizando comisiones para trabajo ${workOrderId}`)
+          console.log(`🔍 Mecánicos seleccionados:`, selectedMechanics)
+          console.log(`🔍 Cantidad de mecánicos: ${selectedMechanics.length}`)
+          
+          // Usar el endpoint de actualización de comisiones para edición
+          const actualizacionResponse = await fetch(`http://localhost:8000/api/mecanicos/trabajos/${workOrderId}/actualizar-comisiones`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(selectedMechanics), // Si está vacío, se eliminarán todas las comisiones
+          })
+          
+          if (actualizacionResponse.ok) {
+            const resultado = await actualizacionResponse.json()
+            console.log("✅ Comisiones actualizadas para el trabajo:", resultado)
+          } else {
+            console.error("❌ Error al actualizar comisiones:", actualizacionResponse.status)
+            const errorData = await actualizacionResponse.json()
+            console.error("❌ Detalles del error:", errorData)
           }
+        } catch (error) {
+          console.error("❌ Error al actualizar comisiones:", error)
+          // No fallar si no se pueden actualizar comisiones, solo loguear el error
         }
 
         // Reload work orders after updating
@@ -2206,8 +2227,14 @@ export function WorkOrdersSection() {
                   )}
                   
                   {selectedMechanics.length === 0 && (
-                    <div className="text-center py-4 text-sm text-muted-foreground">
-                      No hay mecánicos asignados a este trabajo
+                    <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                      <div className="flex items-center gap-2 text-yellow-800">
+                        <AlertTriangle className="h-4 w-4" />
+                        <span className="text-sm font-medium">Sin mecánicos asignados</span>
+                      </div>
+                      <p className="text-xs text-yellow-700 mt-1">
+                        Al guardar sin mecánicos seleccionados, se eliminarán todas las comisiones existentes de este trabajo.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -2946,9 +2973,9 @@ export function WorkOrdersSection() {
                           </div>
                         )}
 
-                        {/* Cobro al Cliente (Mano de Obra + Precios Cliente) */}
+                        {/* Total (Mano de Obra + Precios Cliente) */}
                         <div className="flex justify-between py-1">
-                          <span className="text-sm font-medium">Cobro al Cliente:</span>
+                          <span className="text-sm font-medium">Total:</span>
                           <span className="font-semibold text-lg text-purple-600">
                             {(() => {
                               // Calcular total de precios cliente
@@ -2957,7 +2984,7 @@ export function WorkOrdersSection() {
                                 return total + precioCliente;
                               }, 0);
                               
-                              // Cobro al Cliente = Mano de Obra + Precios Cliente
+                              // Total = Mano de Obra + Precios Cliente
                               // Ejemplo: 80000 (mano de obra) + 70000 (precios cliente) = 150000
                               const manoObra = selectedWorkOrder.manoObra || 0;
                               return formatCurrency(manoObra + totalPreciosCliente);
@@ -2995,7 +3022,7 @@ export function WorkOrdersSection() {
                             </span>
                           </div>
                           <div className="flex justify-between py-1">
-                            <span className="text-sm font-medium">Cobro al Cliente:</span>
+                            <span className="text-sm font-medium">Total:</span>
                             <span className="font-semibold text-lg text-purple-600">
                               {formatCurrency(selectedWorkOrder.totalCost)}
                             </span>

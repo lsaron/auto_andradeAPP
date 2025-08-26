@@ -111,6 +111,7 @@ export interface Mechanic {
   hire_date: string
   created_at: string
   updated_at: string
+  comision_estado?: string // Estado de la comisión: PENDIENTE, APROBADA, DENEGADA
 }
 
 export interface MechanicCreate {

@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from datetime import datetime
+from decimal import Decimal
 from app.models.database import get_db
 from app.models.clientes import Cliente
 from app.models.carros import Carro
@@ -24,14 +26,26 @@ def obtener_clientes(db: Session = Depends(get_db)):
         for carro in carros:
             trabajos = db.query(Trabajo).filter(Trabajo.matricula_carro == carro.matricula).all()
             for trabajo in trabajos:
-                total_gastado += trabajo.costo if trabajo.costo else 0
+                # Total cobrado al cliente = Gastos cobrados + Mano de obra
+                gastos_cobrados = Decimal('0')
+                if trabajo.detalle_gastos:
+                    gastos_cobrados = sum(
+                        Decimal(str(g.monto_cobrado or g.monto or 0)) 
+                        for g in trabajo.detalle_gastos
+                    )
+                
+                mano_obra = Decimal(str(trabajo.mano_obra or 0))
+                total_trabajo = gastos_cobrados + mano_obra
+                total_gastado += float(total_trabajo)
         
         resultado.append({
             "id_nacional": cliente.id_nacional,
             "nombre": cliente.nombre,
             "correo": cliente.correo,
             "telefono": cliente.telefono,
-            "total_gastado": total_gastado
+            "total_gastado": total_gastado,
+            "vehicle_count": len(carros),
+            "registration_date": datetime.utcnow().isoformat()
         })
     
     return resultado

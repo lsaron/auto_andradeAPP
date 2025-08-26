@@ -13,6 +13,7 @@ class Trabajo(Base):
     costo = Column(DECIMAL(10, 2))  # Total cobrado al cliente
     mano_obra = Column(DECIMAL(10, 2), default=0.00)  # Monto de mano de obra del trabajo
     markup_repuestos = Column(DECIMAL(10, 2), default=0.00)  # Markup aplicado a los repuestos
+    ganancia = Column(DECIMAL(10, 2), default=0.00)  # Ganancia neta del trabajo
     aplica_iva = Column(Boolean, nullable=False, default=True)
     
     carro = relationship("Carro", back_populates="trabajos")

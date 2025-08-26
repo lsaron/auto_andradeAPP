@@ -72,6 +72,9 @@ interface WorkOrder {
   parts: WorkOrderPart[] // Changed from string[] to WorkOrderPart[]
   invoiceGenerated?: boolean
   invoiceUrl?: string
+  expenseDetails?: Expense[] // Agregar gastos detallados
+  manoObra?: number // Campo para mano de obra
+  markupRepuestos?: number // Campo para markup de repuestos
 }
 
 interface WorkOrderPart {
@@ -82,11 +85,19 @@ interface WorkOrderPart {
   quantity: number
 }
 
+interface Expense {
+  id: string
+  item: string
+  amount: string
+  amountCharged?: string // Campo opcional para el precio cobrado al cliente
+}
+
 interface OwnershipHistory {
   id: string
   carId: string
   ownerId: string
   ownerName: string
+  ownerNationalId?: string
   ownerEmail?: string
   ownerPhone?: string
   startDate: string
@@ -137,9 +148,31 @@ export function CarsSection() {
         licensePlate: matricula,
         clientName: data.dueno_actual?.nombre || "Sin cliente",
         description: t.descripcion,
-        totalCost: t.costo,
+        totalCost: (() => {
+          // Calcular el total real: gastos cobrados al cliente + mano de obra
+          const gastosCobrados = (t.gastos || []).reduce((acc: number, g: any) => {
+            return acc + (g.monto_cobrado || g.monto || 0);
+          }, 0);
+          const manoObra = t.mano_obra || 0;
+          const total = gastosCobrados + manoObra;
+          console.log(`🔍 Trabajo ${t.id}: gastosCobrados=${gastosCobrados}, manoObra=${manoObra}, total=${total}`);
+          return total;
+        })(),
         expenses: (t.gastos || []).reduce((acc: number, g: any) => acc + g.monto, 0),
-        profit: t.costo - (t.gastos || []).reduce((acc: number, g: any) => acc + g.monto, 0),
+        profit: (() => {
+          // Ganancia neta = Total cobrado - Gastos reales
+          const totalCobrado = (() => {
+            const gastosCobrados = (t.gastos || []).reduce((acc: number, g: any) => {
+              return acc + (g.monto_cobrado || g.monto || 0);
+            }, 0);
+            const manoObra = t.mano_obra || 0;
+            return gastosCobrados + manoObra;
+          })();
+          const gastosReales = (t.gastos || []).reduce((acc: number, g: any) => acc + g.monto, 0);
+          const ganancia = totalCobrado - gastosReales;
+          console.log(`🔍 Trabajo ${t.id}: totalCobrado=${totalCobrado}, gastosReales=${gastosReales}, ganancia=${ganancia}`);
+          return ganancia;
+        })(),
         date: t.fecha,
         parts: (t.gastos || []).map((g: any) => {
           return {
@@ -150,6 +183,18 @@ export function CarsSection() {
             quantity: 1,
           }
         }),
+        expenseDetails: (t.gastos || []).map((g: any) => ({
+          id: `G-${g.id}`,
+          item: g.descripcion,
+          amount: g.monto.toString(),
+          amountCharged: (g.monto_cobrado || g.monto).toString(),
+        })),
+        manoObra: t.mano_obra || 0,
+        markupRepuestos: (t.gastos || []).reduce((acc: number, g: any) => {
+          const costoReal = g.monto || 0;
+          const precioCliente = g.monto_cobrado || costoReal;
+          return acc + Math.max(0, precioCliente - costoReal);
+        }, 0),
         invoiceGenerated: false,
               }
       })
@@ -185,6 +230,48 @@ export function CarsSection() {
   // Estados para modales de detalles financieros
   const [isExpensesDetailModalOpen, setIsExpensesDetailModalOpen] = useState(false)
   const [isProfitDetailModalOpen, setIsProfitDetailModalOpen] = useState(false)
+
+  // Funciones auxiliares para cálculos de ganancias (similar a work-orders)
+  const calculateRealProfit = (order: WorkOrder) => {
+    if (!order.expenseDetails || order.expenseDetails.length === 0) {
+      return order.profit || 0;
+    }
+
+    // Calcular ganancia real: Markup de Repuestos
+    const totalMarkup = order.expenseDetails.reduce((total, expense) => {
+      const costoReal = Number(expense.amount) || 0;
+      const precioCliente = Number(expense.amountCharged) || costoReal;
+      const markup = precioCliente - costoReal;
+      return total + (markup > 0 ? markup : 0);
+    }, 0);
+
+    return totalMarkup;
+  };
+
+  const hasMarkup = (order: WorkOrder) => {
+    if (!order.expenseDetails || order.expenseDetails.length === 0) {
+      return false;
+    }
+
+    return order.expenseDetails.some(expense => {
+      const costoReal = Number(expense.amount) || 0;
+      const precioCliente = Number(expense.amountCharged) || costoReal;
+      return precioCliente > costoReal;
+    });
+  };
+
+  const getTotalMarkup = (order: WorkOrder) => {
+    if (!order.expenseDetails || order.expenseDetails.length === 0) {
+      return 0;
+    }
+
+    return order.expenseDetails.reduce((total, expense) => {
+      const costoReal = Number(expense.amount) || 0;
+      const precioCliente = Number(expense.amountCharged) || costoReal;
+      const markup = precioCliente - costoReal;
+      return total + (markup > 0 ? markup : 0);
+    }, 0);
+  };
 
   const handleAddCar = async () => {
   if (
@@ -440,6 +527,7 @@ export function CarsSection() {
         carId: item.matricula_carro,
         ownerId: item.id_cliente_anterior,
         ownerName: item.nombre_cliente_anterior || "Cliente no encontrado",
+        ownerNationalId: item.id_cliente_anterior,
         ownerEmail: item.email_cliente_anterior,
         ownerPhone: item.telefono_cliente_anterior,
         startDate: item.fecha_cambio,
@@ -1304,7 +1392,7 @@ export function CarsSection() {
                             selectedCarWorkHistory.reduce((sum, order) => sum + order.expenses, 0),
                           )}
                         </div>
-                        <div className="text-sm text-muted-foreground">Gastos Totales del Carro</div>
+                        <div className="text-sm text-muted-foreground">Gastos</div>
                         <div className="text-xs text-red-600 mt-1">Click para ver detalles</div>
                       </div>
                     </CardContent>
@@ -1321,7 +1409,7 @@ export function CarsSection() {
                             selectedCarWorkHistory.reduce((sum, order) => sum + order.totalCost, 0),
                           )}
                         </div>
-                        <div className="text-sm text-muted-foreground">Ingresos Totales del Carro</div>
+                        <div className="text-sm text-muted-foreground">Ingresos Totales</div>
                       </div>
                     </CardContent>
                   </Card>
@@ -1334,22 +1422,17 @@ export function CarsSection() {
                         <div className="text-2xl font-bold text-green-600">
                           {formatCurrency(
                             selectedCarWorkHistory.reduce((sum, order) => {
-                              // Calcular ganancia total incluyendo markup de repuestos
-                              const gastosReales = order.expenses;
-                                                      const gastosCobrados = order.parts?.reduce((total, part) => {
-                          // Usar el precio real cobrado al cliente del backend
-                          return total + (part.costCharged * part.quantity);
-                        }, 0) || gastosReales;
-                              
-                              const gananciaRepuestos = gastosCobrados - gastosReales;
-                              const gananciaBase = order.totalCost - gastosReales;
-                              const gananciaTotal = gananciaBase + gananciaRepuestos;
-                              
-                              return sum + gananciaTotal;
+                              // Ganancia neta = Ganancia por Repuestos + Ganancia Base
+                              // Según el detalle del trabajo: ₡20,000 + ₡80,000 = ₡100,000
+                              const gananciaRepuestos = order.expenseDetails && order.expenseDetails.length > 0 
+                                ? getTotalMarkup(order) 
+                                : 0;
+                              const gananciaBase = (order.manoObra || 0) - order.expenses;
+                              return sum + gananciaRepuestos + gananciaBase;
                             }, 0),
                           )}
                         </div>
-                        <div className="text-sm text-muted-foreground">Ganancias Generadas</div>
+                        <div className="text-sm text-muted-foreground">Ganancias</div>
                         <div className="text-xs text-green-600 mt-1">Click para ver desglose</div>
                       </div>
                     </CardContent>
@@ -1404,6 +1487,57 @@ export function CarsSection() {
                               <p className="text-sm font-semibold text-red-600">{formatCurrency(order.expenses)}</p>
                             </div>
 
+                            {order.expenseDetails && order.expenseDetails.length > 0 && (
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-sm font-medium">Detalles de Gastos:</span>
+                                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                    <span className="flex items-center gap-1">
+                                      <div className="w-3 h-3 bg-red-600 rounded"></div>
+                                      Costo Real
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <div className="w-3 h-3 bg-blue-600 rounded"></div>
+                                      Precio Cliente
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <div className="w-3 h-3 bg-green-600 rounded"></div>
+                                      Ganancia
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="mt-2 space-y-2">
+                                  {order.expenseDetails.map((expense) => {
+                                    const costoReal = Number(expense.amount) || 0;
+                                    const precioCliente = Number(expense.amountCharged) || costoReal;
+                                    const ganancia = precioCliente - costoReal;
+                                    
+                                    return (
+                                      <div
+                                        key={expense.id}
+                                        className="flex justify-between items-center p-2 bg-gray-50 rounded"
+                                      >
+                                        <div className="flex-1">
+                                          <span className="text-sm font-medium">{expense.item}</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                          <span className="text-sm text-red-600">
+                                            {formatCurrency(costoReal)}
+                                          </span>
+                                          <span className="text-sm font-semibold text-blue-600">
+                                            {formatCurrency(precioCliente)}
+                                          </span>
+                                          <span className={`text-sm font-medium ${ganancia > 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                                            {ganancia > 0 ? `+${formatCurrency(ganancia)}` : '₡0'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
                             {order.parts && order.parts.length > 0 && (
                               <div>
                                 <div className="flex items-center justify-between mb-2">
@@ -1449,8 +1583,15 @@ export function CarsSection() {
 
                             <div className="grid gap-2 sm:grid-cols-2 text-xs text-muted-foreground pt-2 border-t">
                               <div>Gastos Reales: {formatCurrency(order.expenses)}</div>
-                              <div>Ganancia Base: {formatCurrency(order.totalCost - order.expenses)}</div>
+                              <div>Ganancia Base: {formatCurrency((order.manoObra || 0) - order.expenses)}</div>
                             </div>
+                            
+                            {order.expenseDetails && order.expenseDetails.length > 0 && (
+                              <div className="grid gap-2 sm:grid-cols-2 text-xs text-muted-foreground pt-2 border-t">
+                                <div>Ganancia Repuestos: {formatCurrency(getTotalMarkup(order))}</div>
+                                <div>Ganancia Total: {formatCurrency(((order.manoObra || 0) - order.expenses) + getTotalMarkup(order))}</div>
+                              </div>
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -1511,14 +1652,10 @@ export function CarsSection() {
                           <div className="text-right space-y-1">
                             <div className="text-xl font-bold text-green-600">{formatCurrency(order.totalCost)}</div>
                             <div className="text-xs text-gray-600">
-                              Ganancia Base: {formatCurrency(order.totalCost - order.expenses)}
+                              Ganancia Base: {formatCurrency((order.manoObra || 0) - order.expenses)}
                             </div>
                             <div className="text-xs text-blue-600">
-                              Ganancia: {formatCurrency((order.totalCost - order.expenses) + (order.parts?.reduce((total, part) => {
-                                const costoReal = part.cost * part.quantity;
-                                const precioCobrado = part.costCharged * part.quantity;
-                                return total + (precioCobrado - costoReal);
-                              }, 0) || 0))}
+                              Ganancia: {formatCurrency(((order.manoObra || 0) - order.expenses) + getTotalMarkup(order))}
                             </div>
                           </div>
                         </div>
@@ -1665,15 +1802,6 @@ export function CarsSection() {
                 Total de propietarios: {carOwnershipHistory.length + 1}
               </div>
 
-              {/* Info message */}
-              <div className="text-xs text-blue-600 bg-blue-50 p-3 rounded-lg border border-blue-200">
-                <strong>💡 Información:</strong> El historial muestra solo los propietarios anteriores. 
-                El propietario actual se muestra en la tarjeta verde arriba. 
-                <br/><br/>
-                <strong>🔍 Estado actual:</strong> Este vehículo tiene {carOwnershipHistory.length} propietario(s) anterior(es) registrado(s).
-                {carOwnershipHistory.length === 0 && " Para crear historial, edita el vehículo y cambia el propietario."}
-              </div>
-
               <div className="space-y-4">
                 {/* Current Owner */}
                 <Card className="border-l-4 border-l-green-500">
@@ -1694,6 +1822,11 @@ export function CarsSection() {
                     </div>
 
                     <div className="space-y-2 text-sm">
+                      {selectedCar.ownerNationalId && (
+                        <div>
+                          <span className="font-medium">Cédula:</span> {selectedCar.ownerNationalId}
+                        </div>
+                      )}
                       {selectedCar.ownerEmail && (
                         <div>
                           <span className="font-medium">Email:</span> {selectedCar.ownerEmail}
@@ -1745,6 +1878,11 @@ export function CarsSection() {
                           </div>
 
                           <div className="space-y-2 text-sm">
+                            {history.ownerNationalId && (
+                              <div>
+                                <span className="font-medium">Cédula:</span> {history.ownerNationalId}
+                              </div>
+                            )}
                             {history.ownerEmail && (
                               <div>
                                 <span className="font-medium">Email:</span> {history.ownerEmail}
@@ -1775,14 +1913,6 @@ export function CarsSection() {
                     <p className="text-xs text-muted-foreground mt-2">
                       El historial se creará automáticamente cuando cambies el propietario.
                     </p>
-                    <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <p className="text-sm text-blue-800">
-                        <strong>💡 Para crear historial:</strong><br/>
-                        1. Edita este vehículo<br/>
-                        2. Cambia el propietario a otro cliente<br/>
-                        3. El historial se creará automáticamente
-                      </p>
-                    </div>
                   </div>
                 )}
               </div>
@@ -1876,15 +2006,20 @@ export function CarsSection() {
                   <div className="text-2xl font-bold text-blue-600">
                     {formatCurrency(
                       selectedCarWorkHistory.reduce((sum, order) => {
+                        if (order.expenseDetails && order.expenseDetails.length > 0) {
+                          return sum + order.expenseDetails.reduce((total, expense) => {
+                            return total + (Number(expense.amountCharged) || Number(expense.amount) || 0);
+                          }, 0);
+                        }
+                        // Fallback a la lógica anterior
                         const gastosCobrados = order.parts?.reduce((total, part) => {
-                          // Usar el precio real cobrado al cliente del backend
                           return total + (part.costCharged * part.quantity);
                         }, 0) || order.expenses;
                         return sum + gastosCobrados;
                       }, 0)
                     )}
                   </div>
-                  <div className="text-sm text-blue-700">Gastos Cobrados</div>
+                  <div className="text-sm text-blue-700">Precio cliente</div>
                 </CardContent>
               </Card>
               
@@ -1893,9 +2028,12 @@ export function CarsSection() {
                   <div className="text-2xl font-bold text-green-600">
                     {formatCurrency(
                       selectedCarWorkHistory.reduce((sum, order) => {
+                        if (order.expenseDetails && order.expenseDetails.length > 0) {
+                          return sum + getTotalMarkup(order);
+                        }
+                        // Fallback a la lógica anterior
                         const gastosReales = order.expenses;
                         const gastosCobrados = order.parts?.reduce((total, part) => {
-                          // Usar el precio real cobrado al cliente del backend
                           return total + (part.costCharged * part.quantity);
                         }, 0) || gastosReales;
                         const gananciaRepuestos = gastosCobrados - gastosReales;
@@ -1903,7 +2041,7 @@ export function CarsSection() {
                       }, 0)
                     )}
                   </div>
-                  <div className="text-sm text-green-700">Ganancia Repuestos</div>
+                  <div className="text-sm text-green-700">Ganancia</div>
                 </CardContent>
               </Card>
             </div>
@@ -1935,20 +2073,35 @@ export function CarsSection() {
 
           <div className="space-y-6 py-4">
             {/* Resumen General */}
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-3">
               <Card className="bg-blue-50 border-blue-200">
                 <CardContent className="p-4 text-center">
                   <div className="text-2xl font-bold text-blue-600">
                     {formatCurrency(
                       selectedCarWorkHistory.reduce((sum, order) => {
-                        const gastosReales = order.expenses;
-                        const gananciaBase = order.totalCost - gastosReales;
+                        // Ganancia Base = Mano de Obra - Gastos Reales
+                        const gananciaBase = (order.manoObra || 0) - order.expenses;
                         return sum + gananciaBase;
                       }, 0)
                     )}
                   </div>
                   <div className="text-sm text-blue-700">Ganancia Base</div>
-                  <div className="text-xs text-blue-600 mt-1">Mano de Obra - Gastos Reales</div>
+                </CardContent>
+              </Card>
+              
+              <Card className="bg-purple-50 border-purple-200">
+                <CardContent className="p-4 text-center">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {formatCurrency(
+                      selectedCarWorkHistory.reduce((sum, order) => {
+                        if (order.expenseDetails && order.expenseDetails.length > 0) {
+                          return sum + getTotalMarkup(order);
+                        }
+                        return sum + 0;
+                      }, 0)
+                    )}
+                  </div>
+                  <div className="text-sm text-purple-700">Ganancia Repuestos</div>
                 </CardContent>
               </Card>
               
@@ -1957,23 +2110,21 @@ export function CarsSection() {
                   <div className="text-2xl font-bold text-green-600">
                     {formatCurrency(
                       selectedCarWorkHistory.reduce((sum, order) => {
-                        const gastosReales = order.expenses;
-                        const gastosCobrados = order.parts?.reduce((total, part) => {
-                          // Usar el precio real cobrado al cliente del backend
-                          return total + (part.costCharged * part.quantity);
-                        }, 0) || gastosReales;
-                        const gananciaRepuestos = gastosCobrados - gastosReales;
-                        const gananciaBase = order.totalCost - gastosReales;
-                        const gananciaTotal = gananciaBase + gananciaRepuestos;
-                        return sum + gananciaTotal;
+                        // Ganancia Total = Ganancia Base + Ganancia Repuestos
+                        const gananciaBase = (order.manoObra || 0) - order.expenses;
+                        const gananciaRepuestos = order.expenseDetails && order.expenseDetails.length > 0 
+                          ? getTotalMarkup(order) 
+                          : 0;
+                        return sum + gananciaBase + gananciaRepuestos;
                       }, 0)
                     )}
                   </div>
-                  <div className="text-sm text-green-700">Ganancia Total</div>
-                  <div className="text-xs text-green-600 mt-1">Ganacia Base + Ganancia Repuestos</div>
+                  <div className="text-sm text-green-700">Ganancias Totales</div>
                 </CardContent>
               </Card>
             </div>
+
+
 
 
           </div>

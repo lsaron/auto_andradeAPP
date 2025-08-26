@@ -365,4 +365,22 @@ export const mecanicosApi = {
     if (!response.ok) throw new Error('Error al asignar mecánicos')
     return response.json()
   },
+
+  // Cambiar estado de comisión
+  cambiarEstadoComision: async (mecanicoId: number, comisionId: number, nuevoEstado: string): Promise<any> => {
+    const response = await fetch(`${API_BASE_URL}/mecanicos/${mecanicoId}/comisiones/${comisionId}/estado`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nuevo_estado: nuevoEstado }),
+    })
+    if (!response.ok) throw new Error('Error al cambiar estado de comisión')
+    return response.json()
+  },
+
+  // Obtener comisiones por quincena
+  getComisionesQuincena: async (mecanicoId: number, quincena: string): Promise<any[]> => {
+    const response = await fetch(`${API_BASE_URL}/mecanicos/${mecanicoId}/comisiones/quincena/${quincena}`)
+    if (!response.ok) throw new Error('Error al obtener comisiones de quincena')
+    return response.json()
+  },
 }

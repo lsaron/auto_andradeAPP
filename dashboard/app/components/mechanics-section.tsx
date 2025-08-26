@@ -51,6 +51,59 @@ export function MechanicsSection() {
     name: "",
   })
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [quincenaActual, setQuincenaActual] = useState<number>(0)
+  const [proximaActualizacion, setProximaActualizacion] = useState<Date | null>(null)
+  const [mostrarSoloQuincenaActual, setMostrarSoloQuincenaActual] = useState(false)
+
+  const calcularQuincenaActual = useCallback(() => {
+    const fechaActual = new Date()
+    const dia = fechaActual.getDate()
+    const mes = fechaActual.getMonth() + 1 // getMonth() es 0-11
+    const anio = fechaActual.getFullYear()
+
+    if (dia <= 15) {
+      return 1
+    } else {
+      return 2
+    }
+  }, [])
+
+  const calcularProximoLunesQuincena = useCallback(() => {
+    const fechaActual = new Date()
+    const dia = fechaActual.getDate()
+    const mes = fechaActual.getMonth() + 1 // getMonth() es 0-11
+    const anio = fechaActual.getFullYear()
+
+    if (dia <= 15) {
+      // Si la fecha actual es 15 o antes, la próxima actualización es el 15 del mes siguiente
+      return new Date(anio, mes, 15)
+    } else {
+      // Si la fecha actual es 16 o después, la próxima actualización es el 15 del mes actual
+      return new Date(anio, mes, 15)
+    }
+  }, [])
+
+  useEffect(() => {
+    // Inicializar quincena actual
+    const quincena = calcularQuincenaActual()
+    setQuincenaActual(quincena)
+    
+    // Calcular próxima actualización
+    const proxima = calcularProximoLunesQuincena()
+    setProximaActualizacion(proxima)
+    
+    console.log("📅 Sistema de quincenas inicializado:")
+    console.log("   - Quincena actual:", quincena)
+    console.log("   - Próxima actualización:", proxima.toLocaleDateString())
+    
+    // Verificar si es momento de actualizar (cada lunes después de quincena)
+    const ahora = new Date()
+    if (ahora.getDay() === 1 && ahora >= proxima) {
+      console.log("🔄 Es lunes después de quincena - Actualizando datos...")
+      setMostrarSoloQuincenaActual(true)
+    }
+  }, [calcularQuincenaActual, calcularProximoLunesQuincena])
+
   type MechanicJob = {
     id: number
     fecha: string
@@ -61,6 +114,9 @@ export function MechanicsSection() {
     total_gastos?: number
     ganancia_base?: number
     comision?: number
+    porcentaje_comision?: number
+    total_mecanicos_trabajo?: number
+    comision_total_trabajo?: number
     gastos_detallados?: any[]
   }
   
@@ -106,8 +162,8 @@ export function MechanicsSection() {
                 id: mecanico.id.toString(),
                 name: mecanico.nombre,
                 mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
-                jobs_completed: stats.trabajos_completados || 0,
-                total_commission: parseFloat(stats.total_comisiones || 0),
+                jobs_completed: stats.total_trabajos || 0,
+                total_commission: parseFloat(stats.comisiones_mes || 0),
                 total_profit: parseFloat(stats.total_ganancias || 0),
                 hire_date: mecanico.fecha_contratacion || new Date().toISOString(),
                 created_at: mecanico.created_at || new Date().toISOString(),
@@ -169,8 +225,8 @@ export function MechanicsSection() {
               id: mecanico.id.toString(),
               name: mecanico.nombre,
               mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
-              jobs_completed: stats.trabajos_completados || 0,
-              total_commission: parseFloat(stats.total_comisiones || 0),
+              jobs_completed: stats.total_trabajos || 0,
+              total_commission: parseFloat(stats.comisiones_mes || 0),
               total_profit: parseFloat(stats.total_ganancias || 0),
               hire_date: mecanico.fecha_contratacion || new Date().toISOString(),
               created_at: mecanico.created_at || new Date().toISOString(),
@@ -205,6 +261,27 @@ export function MechanicsSection() {
       setError("Error al recargar los mecánicos.")
     } finally {
       setLoading(false)
+    }
+  }, [])
+
+  // Función para cambiar el estado de la comisión
+  const handleCambiarEstadoComision = useCallback(async (mechanicId: number, nuevoEstado: string) => {
+    try {
+      // Aquí llamarías a la API para cambiar el estado
+      console.log(`🔄 Cambiando estado de comisión del mecánico ${mechanicId} a ${nuevoEstado}`)
+      
+      // Por ahora, solo actualizamos el estado local
+      setMechanics(prev => prev.map(mechanic => 
+        mechanic.id === mechanicId.toString() 
+          ? { ...mechanic, comision_estado: nuevoEstado }
+          : mechanic
+      ))
+      
+      // TODO: Implementar llamada a la API cuando esté lista
+      // await mecanicosApi.cambiarEstadoComision(mechanicId, comisionId, nuevoEstado)
+      
+    } catch (error) {
+      console.error("Error al cambiar estado de comisión:", error)
     }
   }, [])
 
@@ -480,6 +557,11 @@ export function MechanicsSection() {
     return filtered
   }, [mechanicJobs, selectedYear, selectedMonth, availableYears])
 
+  const toggleVisualizacionQuincena = useCallback(() => {
+    setMostrarSoloQuincenaActual(!mostrarSoloQuincenaActual)
+    console.log(`🔄 Cambiando visualización a: ${mostrarSoloQuincenaActual ? "Solo Quincena Actual" : "Histórico"}`)
+  }, [mostrarSoloQuincenaActual])
+
   if (loading && mechanics.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -563,7 +645,7 @@ export function MechanicsSection() {
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Mecánicos</CardTitle>
@@ -618,6 +700,37 @@ export function MechanicsSection() {
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Estados Comisión</CardTitle>
+            <UserCog className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <LoadingSpinner size="sm" />
+                  <span className="text-sm text-muted-foreground">Actualizando...</span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-green-600">✅ Aprobadas:</span>
+                    <span className="font-semibold">{mechanics.filter(m => m.comision_estado === 'APROBADA').length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-red-600">❌ Denegadas:</span>
+                    <span className="font-semibold">{mechanics.filter(m => m.comision_estado === 'DENEGADA').length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">⏳ Pendientes:</span>
+                    <span className="font-semibold">{mechanics.filter(m => m.comision_estado === 'PENDIENTE' || !m.comision_estado).length}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Información de actualización */}
@@ -648,12 +761,12 @@ export function MechanicsSection() {
         )}
       </div>
 
-      {/* Mechanics Table */}
+     {/* Mechanics Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>Lista de Mecánicos</CardTitle>
-          <CardDescription>Información detallada de todos los mecánicos registrados</CardDescription>
-        </CardHeader>
+                 <CardHeader>
+           <CardTitle>Lista de Mecánicos</CardTitle>
+           <CardDescription>Información detallada de todos los mecánicos registrados</CardDescription>
+         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-8">
@@ -668,8 +781,9 @@ export function MechanicsSection() {
                   <TableHead>Nombre</TableHead>
                   <TableHead>Trabajos Completados</TableHead>
                   <TableHead>Ganancias Generadas</TableHead>
-                  <TableHead>Comisiones</TableHead>
+                                     <TableHead>Comisiones</TableHead>
                   <TableHead>Fecha de Contratación</TableHead>
+                  <TableHead>Estado Comisión</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -686,6 +800,17 @@ export function MechanicsSection() {
                     <TableCell>₡{(mechanic.total_profit || 0).toLocaleString()}</TableCell>
                     <TableCell>₡{(mechanic.total_commission || 0).toLocaleString()}</TableCell>
                     <TableCell>{mechanic.hire_date ? new Date(mechanic.hire_date).toLocaleDateString() : 'N/A'}</TableCell>
+                    <TableCell>
+                      <select
+                        value={mechanic.comision_estado || 'PENDIENTE'}
+                        onChange={(e) => handleCambiarEstadoComision(parseInt(mechanic.id), e.target.value)}
+                        className="px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="PENDIENTE">Pendiente</option>
+                        <option value="APROBADA">Aprobada</option>
+                        <option value="DENEGADA">Denegada</option>
+                      </select>
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button
@@ -732,6 +857,78 @@ export function MechanicsSection() {
               {searchTerm ? "No se encontraron mecánicos con esa búsqueda" : "No hay mecánicos registrados"}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* ======================================== */}
+      {/* TARJETA: SISTEMA DE QUINCENAS */}
+      {/* ======================================== */}
+      <Card className="mt-4">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-blue-600" />
+            Sistema de Quincenas Automático
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleVisualizacionQuincena}
+              className="text-xs"
+            >
+              {mostrarSoloQuincenaActual ? "Mostrar Histórico" : "Solo Quincena Actual"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={reloadMechanics}
+              className="text-xs"
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Actualizar
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {/* Estado actual */}
+            <div className="flex items-center justify-between p-2 bg-blue-50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-blue-600" />
+                <span className="text-sm font-medium text-blue-900">Quincena Actual:</span>
+              </div>
+              <Badge variant="default" className="bg-blue-600 text-white">
+                {quincenaActual === 1 ? "Q1 (1-15)" : quincenaActual === 2 ? "Q2 (16-31)" : "Calculando..."}
+              </Badge>
+            </div>
+
+            {/* Próxima actualización */}
+            <div className="flex items-center justify-between p-2 bg-green-50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-green-600" />
+                <span className="text-sm font-medium text-green-900">Próxima Actualización:</span>
+              </div>
+              <span className="text-sm text-green-700 font-medium">
+                {proximaActualizacion ? proximaActualizacion.toLocaleDateString('es-ES', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                }) : "Calculando..."}
+              </span>
+            </div>
+
+            {/* Estado de visualización */}
+            <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-orange-600" />
+                <span className="text-sm font-medium text-gray-900">Estado de Visualización:</span>
+              </div>
+              <Badge variant={mostrarSoloQuincenaActual ? "destructive" : "secondary"}>
+                {mostrarSoloQuincenaActual ? "Solo Quincena Actual" : "Mostrando Histórico"}
+              </Badge>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -902,6 +1099,7 @@ export function MechanicsSection() {
                   </div>
                 </div>
                 
+                
                 {/* Segunda fila con información adicional */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
                   <div>
@@ -922,12 +1120,12 @@ export function MechanicsSection() {
                       ₡{filteredJobs.reduce((total, job) => total + (Number(job.ganancia_base) || 0), 0).toLocaleString('es-CR')}
                     </p>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-blue-900">Total Comisiones</p>
-                    <p className="text-lg font-semibold text-purple-600">
-                      ₡{filteredJobs.reduce((total, job) => total + (Number(job.comision) || 0), 0).toLocaleString('es-CR')}
-                    </p>
-                  </div>
+                                     <div>
+                     <p className="text-sm font-medium text-blue-900">Comisiones Totales</p>
+                     <p className="text-lg font-semibold text-purple-600">
+                       ₡{filteredJobs.reduce((total, job) => total + (Number(job.comision) || 0), 0).toLocaleString('es-CR')}
+                     </p>
+                   </div>
                 </div>
               </div>
 
@@ -1028,16 +1226,6 @@ export function MechanicsSection() {
                   </div>
                                  ) : filteredJobs.length > 0 ? (
                   <div className="border rounded-lg overflow-hidden">
-                    {/* Nota explicativa sobre comisiones */}
-                    <div className="bg-blue-50 border-b border-blue-200 p-3">
-                      <div className="flex items-center gap-2 text-sm text-blue-700">
-                        <DollarSign className="h-4 w-4" />
-                        <span className="font-medium">Nota sobre Comisiones:</span>
-                      </div>
-                      <p className="text-xs text-blue-600 mt-1">
-                        Las comisiones se calculan al 2% sobre la ganancia base (Mano de Obra - Costos Reales de repuestos)
-                      </p>
-                    </div>
                     
                     <Table>
                       <TableHeader>
@@ -1048,7 +1236,8 @@ export function MechanicsSection() {
                           <TableHead className="text-right">Mano de Obra</TableHead>
                           <TableHead className="text-right">Gastos Reales</TableHead>
                           <TableHead className="text-right">Ganancia Base</TableHead>
-                          <TableHead className="text-right">Comisión (2%)</TableHead>
+                                                     <TableHead className="text-right">Comisión Total</TableHead>
+                           <TableHead className="text-right">Comisión Individual</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1063,7 +1252,9 @@ export function MechanicsSection() {
                             mano_obra: job.mano_obra,
                             total_gastos: job.total_gastos,
                             ganancia_base: job.ganancia_base,
-                            comision: job.comision
+                            comision: job.comision,
+                            total_mecanicos_trabajo: job.total_mecanicos_trabajo,
+                            comision_total_trabajo: job.comision_total_trabajo
                           })
                           
                           return (
@@ -1083,9 +1274,12 @@ export function MechanicsSection() {
                               <TableCell className="text-right font-medium text-red-600">
                                 ₡{Number(job.total_gastos || 0).toLocaleString('es-CR')}
                               </TableCell>
-                              <TableCell className="text-right font-medium text-blue-600">
-                                ₡{Number(job.ganancia_base || 0).toLocaleString('es-CR')}
-                              </TableCell>
+                                                             <TableCell className="text-right font-medium text-blue-600">
+                                 ₡{Number(job.ganancia_base || 0).toLocaleString('es-CR')}
+                               </TableCell>
+                               <TableCell className="text-right font-medium text-blue-600">
+                                 ₡{Number(job.comision_total_trabajo || 0).toLocaleString('es-CR')}
+                               </TableCell>
                               <TableCell className="text-right font-medium text-purple-600">
                                 ₡{Number(job.comision || 0).toLocaleString('es-CR')}
                               </TableCell>
