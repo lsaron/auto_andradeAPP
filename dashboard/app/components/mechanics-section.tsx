@@ -264,26 +264,7 @@ export function MechanicsSection() {
     }
   }, [])
 
-  // Función para cambiar el estado de la comisión
-  const handleCambiarEstadoComision = useCallback(async (mechanicId: number, nuevoEstado: string) => {
-    try {
-      // Aquí llamarías a la API para cambiar el estado
-      console.log(`🔄 Cambiando estado de comisión del mecánico ${mechanicId} a ${nuevoEstado}`)
-      
-      // Por ahora, solo actualizamos el estado local
-      setMechanics(prev => prev.map(mechanic => 
-        mechanic.id === mechanicId.toString() 
-          ? { ...mechanic, comision_estado: nuevoEstado }
-          : mechanic
-      ))
-      
-      // TODO: Implementar llamada a la API cuando esté lista
-      // await mecanicosApi.cambiarEstadoComision(mechanicId, comisionId, nuevoEstado)
-      
-    } catch (error) {
-      console.error("Error al cambiar estado de comisión:", error)
-    }
-  }, [])
+
 
   // Filter mechanics based on search term
   const filteredMechanics = useMemo(() => {
@@ -714,18 +695,7 @@ export function MechanicsSection() {
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-green-600">✅ Aprobadas:</span>
-                    <span className="font-semibold">{mechanics.filter(m => m.comision_estado === 'APROBADA').length}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-red-600">❌ Denegadas:</span>
-                    <span className="font-semibold">{mechanics.filter(m => m.comision_estado === 'DENEGADA').length}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">⏳ Pendientes:</span>
-                    <span className="font-semibold">{mechanics.filter(m => m.comision_estado === 'PENDIENTE' || !m.comision_estado).length}</span>
-                  </div>
+
                 </>
               )}
             </div>
@@ -783,7 +753,7 @@ export function MechanicsSection() {
                   <TableHead>Ganancias Generadas</TableHead>
                                      <TableHead>Comisiones</TableHead>
                   <TableHead>Fecha de Contratación</TableHead>
-                  <TableHead>Estado Comisión</TableHead>
+
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -800,17 +770,7 @@ export function MechanicsSection() {
                     <TableCell>₡{(mechanic.total_profit || 0).toLocaleString()}</TableCell>
                     <TableCell>₡{(mechanic.total_commission || 0).toLocaleString()}</TableCell>
                     <TableCell>{mechanic.hire_date ? new Date(mechanic.hire_date).toLocaleDateString() : 'N/A'}</TableCell>
-                    <TableCell>
-                      <select
-                        value={mechanic.comision_estado || 'PENDIENTE'}
-                        onChange={(e) => handleCambiarEstadoComision(parseInt(mechanic.id), e.target.value)}
-                        className="px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="PENDIENTE">Pendiente</option>
-                        <option value="APROBADA">Aprobada</option>
-                        <option value="DENEGADA">Denegada</option>
-                      </select>
-                    </TableCell>
+
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button

@@ -20,3 +20,4 @@ class Mecanico(Base):
     # Relaciones
     trabajos_mecanicos = relationship("TrabajoMecanico", back_populates="mecanico", cascade="all, delete-orphan")
     comisiones = relationship("ComisionMecanico", back_populates="mecanico", cascade="all, delete-orphan")
+    pagos_salarios = relationship("PagoSalario", back_populates="mecanico", cascade="all, delete-orphan")

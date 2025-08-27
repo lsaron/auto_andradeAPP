@@ -335,29 +335,53 @@ class MecanicoService:
     
     def obtener_comisiones_quincena_mecanico(self, mecanico_id: int, quincena: str) -> List[Dict[str, Any]]:
         """Obtiene las comisiones de un mecánico para una quincena específica"""
-        comisiones = self.db.query(ComisionMecanico).filter(
-            ComisionMecanico.id_mecanico == mecanico_id,
-            ComisionMecanico.quincena == quincena
-        ).all()
-        
-        resultado = []
-        for comision in comisiones:
-            # Obtener información del trabajo
-            trabajo = self.db.query(Trabajo).filter(Trabajo.id == comision.id_trabajo).first()
+        try:
+            # Extraer año y número de quincena del parámetro quincena (formato: YYYY-Q1, YYYY-Q2, etc.)
+            año, num_quincena = quincena.split('-')
+            año = int(año)
+            num_quincena = int(num_quincena.replace('Q', ''))
             
-            resultado.append({
-                "id": comision.id,
-                "id_trabajo": comision.id_trabajo,
-                "descripcion_trabajo": trabajo.descripcion if trabajo else "Trabajo no encontrado",
-                "fecha_trabajo": trabajo.fecha.strftime("%Y-%m-%d") if trabajo else None,
-                "monto_comision": float(comision.monto_comision),
-                "estado_comision": comision.estado_comision.value,
-                "fecha_calculo": comision.fecha_calculo.strftime("%Y-%m-%d %H:%M:%S") if comision.fecha_calculo else None,
-                "quincena": comision.quincena,
-                "porcentaje_comision": float(comision.porcentaje_comision) if comision.porcentaje_comision else 2.0
-            })
-        
-        return resultado
+            # Calcular fechas de inicio y fin de la quincena
+            if num_quincena == 1:
+                fecha_inicio = datetime(año, 1, 1)
+                fecha_fin = datetime(año, 12, 15)
+            elif num_quincena == 2:
+                fecha_inicio = datetime(año, 1, 16)
+                fecha_fin = datetime(año, 12, 31)
+            else:
+                return []
+            
+            # Buscar comisiones por fecha del trabajo dentro del rango de la quincena
+            comisiones = self.db.query(ComisionMecanico).join(
+                Trabajo, ComisionMecanico.id_trabajo == Trabajo.id
+            ).filter(
+                ComisionMecanico.id_mecanico == mecanico_id,
+                Trabajo.fecha >= fecha_inicio,
+                Trabajo.fecha <= fecha_fin
+            ).all()
+            
+            resultado = []
+            for comision in comisiones:
+                # Obtener información del trabajo
+                trabajo = self.db.query(Trabajo).filter(Trabajo.id == comision.id_trabajo).first()
+                
+                resultado.append({
+                    "id": comision.id,
+                    "id_trabajo": comision.id_trabajo,
+                    "descripcion_trabajo": trabajo.descripcion if trabajo else "Trabajo no encontrado",
+                    "fecha_trabajo": trabajo.fecha.strftime("%Y-%m-%d") if trabajo else None,
+                    "monto_comision": float(comision.monto_comision),
+                    "estado_comision": comision.estado_comision.value,
+                    "fecha_calculo": comision.fecha_calculo.strftime("%Y-%m-%d %H:%M:%S") if comision.fecha_calculo else None,
+                    "quincena": comision.quincena,
+                    "porcentaje_comision": float(comision.porcentaje_comision) if comision.porcentaje_comision else 2.0
+                })
+            
+            return resultado
+            
+        except Exception as e:
+            print(f"Error al obtener comisiones por quincena: {e}")
+            return []
 
     @staticmethod
     def obtener_estadisticas_mecanico(db: Session, mecanico_id: int, mes: Optional[str] = None) -> MecanicoConEstadisticas:
@@ -461,3 +485,84 @@ class MecanicoService:
                 )
             )
         ).limit(limit).all()
+
+    def aprobar_denegar_comisiones_quincena(self, mecanico_id: int, quincena: str, aprobar: bool) -> Dict[str, Any]:
+        """
+        Aprueba o deniega todas las comisiones de un mecánico para una quincena específica.
+        Si se deniegan, se eliminan todas las comisiones de la base de datos.
+        """
+        try:
+            # Verificar que el mecánico existe
+            mecanico = self.db.query(Mecanico).filter(Mecanico.id == mecanico_id).first()
+            if not mecanico:
+                return {"error": "Mecánico no encontrado"}
+            
+            # Extraer año y número de quincena del parámetro quincena (formato: YYYY-Q1, YYYY-Q2, etc.)
+            try:
+                año, num_quincena = quincena.split('-')
+                año = int(año)
+                num_quincena = int(num_quincena.replace('Q', ''))
+            except ValueError:
+                return {"error": f"Formato de quincena inválido: {quincena}. Debe ser YYYY-Q1, YYYY-Q2, etc."}
+            
+            # Calcular fechas de inicio y fin de la quincena
+            if num_quincena == 1:
+                fecha_inicio = datetime(año, 1, 1)
+                fecha_fin = datetime(año, 12, 15)
+            elif num_quincena == 2:
+                fecha_inicio = datetime(año, 1, 16)
+                fecha_fin = datetime(año, 12, 31)
+            else:
+                return {"error": f"Número de quincena inválido: {num_quincena}. Debe ser 1 o 2."}
+            
+            # Obtener todas las comisiones del mecánico para esa quincena
+            # Buscar por fecha del trabajo dentro del rango de la quincena
+            comisiones = self.db.query(ComisionMecanico).join(
+                Trabajo, ComisionMecanico.id_trabajo == Trabajo.id
+            ).filter(
+                ComisionMecanico.id_mecanico == mecanico_id,
+                Trabajo.fecha >= fecha_inicio,
+                Trabajo.fecha <= fecha_fin
+            ).all()
+            
+            if not comisiones:
+                return {"error": f"No hay comisiones para el mecánico {mecanico.nombre} en la quincena {quincena}"}
+            
+            total_comisiones = len(comisiones)
+            monto_total = sum(float(c.monto_comision) for c in comisiones)
+            
+            if aprobar:
+                # Marcar todas las comisiones como aprobadas y asignar la quincena
+                for comision in comisiones:
+                    comision.estado_comision = EstadoComision.APROBADA
+                    comision.quincena = quincena  # Asignar la quincena
+                
+                self.db.commit()
+                
+                return {
+                    "message": f"Comisiones aprobadas exitosamente",
+                    "mecanico": mecanico.nombre,
+                    "quincena": quincena,
+                    "total_comisiones": total_comisiones,
+                    "monto_total": monto_total,
+                    "accion": "APROBADA"
+                }
+            else:
+                # Eliminar todas las comisiones de la base de datos
+                for comision in comisiones:
+                    self.db.delete(comision)
+                
+                self.db.commit()
+                
+                return {
+                    "message": f"Comisiones denegadas y eliminadas exitosamente",
+                    "mecanico": mecanico.nombre,
+                    "quincena": quincena,
+                    "total_comisiones": total_comisiones,
+                    "monto_total": monto_total,
+                    "accion": "DENEGADA"
+                }
+                
+        except Exception as e:
+            self.db.rollback()
+            return {"error": f"Error al procesar comisiones: {str(e)}"}

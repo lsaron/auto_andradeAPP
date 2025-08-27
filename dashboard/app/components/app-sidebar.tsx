@@ -59,12 +59,12 @@ interface AppSidebarProps {
 export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps) {
   return (
     <Sidebar className="border-r bg-white" style={{ background: 'white !important' }}>
-      <SidebarHeader className="p-4 pb-2">
+      <SidebarHeader className="p-2">
         <div className="flex items-center justify-center">
           <img 
             src="/auto-andrade.png" 
             alt="Auto Andrade Logo" 
-            className="w-80 h-auto max-h-24 object-contain"
+            className="w-72 h-24 object-contain"
           />
         </div>
       </SidebarHeader>

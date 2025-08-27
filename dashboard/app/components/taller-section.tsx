@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useCallback, useEffect } from "react"
+import { buildApiUrl } from "../lib/api-config"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -29,6 +30,7 @@ import {
 import { Plus, Search, Eye, Edit, Trash2, DollarSign, Calendar, TrendingUp, RefreshCw, Wrench, Users, Zap, Droplets } from "lucide-react"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { ErrorMessage } from "@/components/ui/error-message"
+import { mecanicosApi } from "@/lib/api-client"
 
 // Interfaces para los tipos de datos
 interface GastoTaller {
@@ -42,14 +44,14 @@ interface GastoTaller {
 }
 
 interface PagoSalario {
-  id: string
-  id_mecanico: string
-  nombre_mecanico: string
-  monto_salario: number
-  semana_pago: string
-  fecha_pago: string
-  created_at: string
-}
+   id: string
+   id_mecanico: string
+   nombre_mecanico: string
+   monto_salario: number
+   semana_pago: string // Ahora será "1", "2", "3" o "4"
+   fecha_pago: string
+   created_at: string
+ }
 
 interface Mecanico {
   id: string
@@ -64,10 +66,29 @@ interface GastoTallerCreate {
 }
 
 interface PagoSalarioCreate {
+   id_mecanico: string
+   monto_salario: number
+   semana_pago: string // Ahora será "1", "2", "3" o "4"
+   fecha_pago: string
+ }
+
+// Nueva interfaz para comisiones por quincena
+interface ComisionQuincena {
+  id: string
   id_mecanico: string
-  monto_salario: number
-  semana_pago: string
-  fecha_pago: string
+  monto_comision: number
+  fecha_comision: string
+  descripcion_trabajo: string
+  ganancia_base: number
+  estado: string // Estado de la comisión: PENDIENTE, APROBADA, PENALIZADA
+}
+
+// Nueva interfaz para el estado de aprobación de la quincena
+interface EstadoQuincena {
+  mecanicoId: string
+  quincena: string
+  estado: "PENDIENTE" | "APROBADA" | "DENEGADA"
+  totalComisiones: number
 }
 
 export function TallerSection() {
@@ -96,47 +117,146 @@ export function TallerSection() {
   })
   const [editCategoriaPersonalizada, setEditCategoriaPersonalizada] = useState("")
 
-  // Estados para pagos de salarios
-  const [pagosSalarios, setPagosSalarios] = useState<PagoSalario[]>([])
-  const [loadingPagos, setLoadingPagos] = useState(true)
-  const [errorPagos, setErrorPagos] = useState<string | null>(null)
-  const [isPagoSalariosDialogOpen, setIsPagoSalariosDialogOpen] = useState(false)
-  const [mecanicos, setMecanicos] = useState<Mecanico[]>([])
-  const [nuevoPagoSalario, setNuevoPagoSalario] = useState<PagoSalarioCreate>({
-    id_mecanico: "",
-    monto_salario: 0,
-    semana_pago: "",
-    fecha_pago: new Date().toISOString().split('T')[0]
-  })
-
-  // Estados generales
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-
-  // Categorías predefinidas para gastos
-  const categoriasGastos = [
-    { value: "luz", label: "Luz", icon: Zap },
-    { value: "agua", label: "Agua", icon: Droplets },
-    { value: "herramientas", label: "Herramientas", icon: Wrench },
-    { value: "materiales", label: "Materiales", icon: Wrench },
-    { value: "servicios", label: "Servicios", icon: Wrench },
-    { value: "otros", label: "Otros", icon: Wrench }
-  ]
-
-  // Función para obtener la semana actual en formato ISO
+       // Función para obtener la semana actual (1-4)
   const obtenerSemanaActual = useCallback(() => {
     const fecha = new Date()
-    const año = fecha.getFullYear()
-    const semana = Math.ceil((fecha.getDate() + new Date(fecha.getFullYear(), fecha.getMonth(), 1).getDay()) / 7)
-    return `${año}-W${semana.toString().padStart(2, '0')}`
+    const dia = fecha.getDate()
+    // Calcular semana del mes (1-4)
+    const semana = Math.ceil(dia / 7)
+    const resultado = Math.min(semana, 4).toString() // Asegurar que no sea mayor a 4
+    console.log("📅 obtenerSemanaActual:", { fecha: fecha.toISOString(), dia, semana, resultado })
+    return resultado
   }, [])
 
-  // Cargar datos iniciales
-  useEffect(() => {
-    cargarDatos()
+  // Función para detectar si es el fin del mes (domingo de la cuarta semana)
+  const esFinDeMes = useCallback(() => {
+    const fecha = new Date()
+    const dia = fecha.getDate()
+    const diaSemana = fecha.getDay() // 0 = domingo, 1 = lunes, etc.
+    
+    // Calcular el último domingo del mes
+    const ultimoDia = new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0)
+    const ultimoDomingo = new Date(ultimoDia)
+    
+    // Retroceder hasta encontrar el domingo anterior
+    while (ultimoDomingo.getDay() !== 0) {
+      ultimoDomingo.setDate(ultimoDomingo.getDate() - 1)
+    }
+    
+    // Verificar si hoy es el domingo de la cuarta semana o el último domingo del mes
+    const esDomingo = diaSemana === 0
+    const esCuartaSemana = Math.ceil(dia / 7) === 4
+    const esUltimoDomingo = fecha.getDate() === ultimoDomingo.getDate()
+    
+    // También considerar si estamos en los últimos días del mes (últimos 3 días)
+    const esUltimosDias = dia >= ultimoDia.getDate() - 2
+    
+    const resultado = esDomingo && (esCuartaSemana || esUltimoDomingo || esUltimosDias)
+    console.log("📅 esFinDeMes:", {
+      fecha: fecha.toISOString(),
+      dia,
+      diaSemana,
+      esDomingo,
+      esCuartaSemana,
+      esUltimoDomingo,
+      esUltimosDias,
+      resultado
+    })
+    
+    return resultado
   }, [])
+
+  // Función para obtener años disponibles en la base de datos
+  const obtenerAnosDisponibles = useCallback(async () => {
+    try {
+      console.log("📅 Obteniendo años disponibles...")
+      const response = await fetch(buildApiUrl('/gastos-taller'))
+      if (!response.ok) return
+      
+      const gastos = await response.json()
+      const anosGastos = gastos.map((g: any) => 
+        new Date(g.fecha_gasto).getFullYear()
+      )
+      console.log("📅 Años de gastos:", anosGastos)
+      
+      const responseSalarios = await fetch(buildApiUrl('/pagos-salarios'))
+      if (responseSalarios.ok) {
+        const salarios = await responseSalarios.json()
+        const anosSalarios = salarios.map((s: any) => 
+          new Date(s.fecha_pago).getFullYear()
+        )
+        console.log("📅 Años de salarios:", anosSalarios)
+        
+        const todosLosAnos = [...new Set([...anosGastos, ...anosSalarios])]
+        const anosOrdenados = todosLosAnos.sort((a, b) => b - a) // Orden descendente
+        console.log("📅 Años disponibles:", anosOrdenados)
+        setAvailableYears(anosOrdenados)
+      }
+    } catch (error) {
+      console.error("❌ Error al obtener años disponibles:", error)
+      if (error instanceof Error) {
+        console.error("❌ Detalles del error:", {
+          message: error.message,
+          stack: error.stack
+        })
+      } else {
+        console.error("❌ Error desconocido:", error)
+      }
+    }
+  }, [])
+
+   // Estados para pagos de salarios
+   const [pagosSalarios, setPagosSalarios] = useState<PagoSalario[]>([])
+   const [loadingPagos, setLoadingPagos] = useState(true)
+   const [errorPagos, setErrorPagos] = useState<string | null>(null)
+   const [isPagoSalariosDialogOpen, setIsPagoSalariosDialogOpen] = useState(false)
+   const [mecanicos, setMecanicos] = useState<Mecanico[]>([])
+   const [nuevoPagoSalario, setNuevoPagoSalario] = useState<PagoSalarioCreate>({
+     id_mecanico: "",
+     monto_salario: 0,
+     semana_pago: obtenerSemanaActual(),
+     fecha_pago: new Date().toISOString().split('T')[0]
+   })
+   
+   // Log del estado inicial
+   console.log("🚀 Estado inicial de nuevoPagoSalario:", nuevoPagoSalario)
+
+  // Nuevos estados para comisiones
+  const [comisionesQuincena, setComisionesQuincena] = useState<ComisionQuincena[]>([])
+  const [loadingComisiones, setLoadingComisiones] = useState(false)
+  const [totalPagoConComision, setTotalPagoConComision] = useState<number>(0)
+
+    // Nuevo estado para el estado de aprobación de la quincena
+  const [estadoQuincena, setEstadoQuincena] = useState<EstadoQuincena | null>(null)
+  const [loadingEstadoQuincena, setLoadingEstadoQuincena] = useState(false)
+
+     // Estados generales
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [mostrarGastos, setMostrarGastos] = useState(true)
+  
+         // Estados para navegación temporal
+    const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
+    const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth()) // Empezar en el mes actual
+    const [availableYears, setAvailableYears] = useState<number[]>([])
+    const [isCurrentPeriod, setIsCurrentPeriod] = useState(true) // Empezar como período actual
+
+   // Categorías predefinidas para gastos
+   const categoriasGastos = [
+     { value: "luz", label: "Luz", icon: Zap },
+     { value: "agua", label: "Agua", icon: Droplets },
+     { value: "herramientas", label: "Herramientas", icon: Wrench },
+     { value: "materiales", label: "Materiales", icon: Wrench },
+     { value: "servicios", label: "Servicios", icon: Wrench },
+     { value: "otros", label: "Otros", icon: Wrench }
+   ]
+
+
+
+
 
   const cargarDatos = useCallback(async () => {
     try {
+      console.log("📊 Cargando datos...")
       // Cargar gastos del taller
       await cargarGastos()
       // Cargar pagos de salarios
@@ -144,98 +264,256 @@ export function TallerSection() {
       // Cargar mecánicos
       await cargarMecanicos()
       setLastUpdated(new Date())
+      console.log("📊 Datos cargados exitosamente")
     } catch (error) {
-      console.error("Error al cargar datos:", error)
+      console.error("❌ Error al cargar datos:", error)
+      if (error instanceof Error) {
+        console.error("❌ Detalles del error:", {
+          message: error.message,
+          stack: error.stack
+        })
+      } else {
+        console.error("❌ Error desconocido:", error)
+      }
     }
-  }, [])
+  }, [selectedYear, selectedMonth])
 
-  // Función para cargar gastos del taller
+  // Cargar datos iniciales
+  useEffect(() => {
+    console.log("🚀 useEffect inicial ejecutado")
+    cargarDatos()
+    obtenerAnosDisponibles()
+  }, [cargarDatos, obtenerAnosDisponibles])
+
+  // Recargar datos cuando cambien las fechas seleccionadas
+  useEffect(() => {
+    console.log("📅 useEffect fechas seleccionadas ejecutado:", {
+      selectedYear,
+      selectedMonth,
+      availableYearsLength: availableYears.length
+    })
+    
+    if (availableYears.length > 0) { // Solo ejecutar cuando ya tengamos años disponibles
+      console.log("📅 Recargando datos por cambio de fechas")
+      cargarDatos()
+    }
+  }, [selectedYear, selectedMonth, availableYears.length, cargarDatos])
+
+
+
+  // Verificar fin de mes cada hora (para detectar cambios automáticamente)
+  useEffect(() => {
+    const verificarFinDeMes = () => {
+      if (esFinDeMes()) {
+        console.log("🕐 Verificación horaria: FIN DE MES detectado")
+        const fechaActual = new Date()
+        const anoActual = fechaActual.getFullYear()
+        const mesActual = fechaActual.getMonth()
+        
+        // Solo reiniciar si estamos en el período actual
+        if (selectedYear === anoActual && selectedMonth === mesActual) {
+          console.log("🔄 Reiniciando automáticamente al nuevo mes...")
+          setSelectedYear(anoActual)
+          setSelectedMonth(mesActual)
+          setGastos([])
+          setPagosSalarios([])
+          cargarDatos()
+        }
+      }
+    }
+
+    // Verificar inmediatamente
+    verificarFinDeMes()
+    
+    // Configurar verificación cada hora
+    const interval = setInterval(verificarFinDeMes, 60 * 60 * 1000) // 1 hora
+    
+    return () => clearInterval(interval)
+  }, [esFinDeMes, selectedYear, selectedMonth, cargarDatos])
+
+  // Función para verificar si estamos en el período actual
+  const verificarPeriodoActual = useCallback(() => {
+    const fechaActual = new Date()
+    const anoActual = fechaActual.getFullYear()
+    const mesActual = fechaActual.getMonth()
+    
+    const esPeriodoActual = selectedYear === anoActual && selectedMonth === mesActual
+    console.log("📅 verificarPeriodoActual:", {
+      selectedYear,
+      selectedMonth,
+      anoActual,
+      mesActual,
+      esPeriodoActual
+    })
+    
+    setIsCurrentPeriod(esPeriodoActual)
+    
+    // Si es fin de mes y estamos en período actual, reiniciar datos
+    if (esFinDeMes() && esPeriodoActual) {
+      console.log("🔄 FIN DE MES DETECTADO - Reiniciando datos...")
+      // Reiniciar a datos del mes actual
+      setSelectedYear(anoActual)
+      setSelectedMonth(mesActual)
+      // Limpiar las listas localmente (sin afectar la base de datos)
+      setGastos([])
+      setPagosSalarios([])
+      // Recargar datos del nuevo mes
+      cargarDatos()
+    }
+  }, [selectedYear, selectedMonth, esFinDeMes, cargarDatos])
+
+  // Verificar período actual cuando cambien las fechas seleccionadas
+  useEffect(() => {
+    console.log("📅 useEffect verificarPeriodoActual ejecutado:", {
+      selectedYear,
+      selectedMonth
+    })
+    verificarPeriodoActual()
+  }, [selectedYear, selectedMonth, verificarPeriodoActual])
+
+  // Verificar período actual al inicio
+  useEffect(() => {
+    console.log("🚀 useEffect inicial verificarPeriodoActual ejecutado")
+    verificarPeriodoActual()
+  }, [verificarPeriodoActual])
+
+    // Función para cargar gastos del taller
   const cargarGastos = useCallback(async () => {
     try {
+      console.log("💰 Cargando gastos del taller...")
       setLoadingGastos(true)
       setErrorGastos(null)
       
-      // TODO: Implementar llamada a la API cuando esté lista
-      // const response = await fetch('/api/gastos-taller')
-      // const data = await response.json()
-      // setGastos(data)
+      const response = await fetch(buildApiUrl('/gastos-taller'))
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      const data = await response.json()
+      console.log("💰 Gastos recibidos de la API:", data)
       
-      // Datos de ejemplo por ahora
-      setGastos([
-        {
-          id: "1",
-          descripcion: "Pago de luz del mes",
-          monto: 45000,
-          categoria: "luz",
-          fecha_gasto: "2025-01-15",
-          created_at: "2025-01-15T10:00:00Z",
-          updated_at: "2025-01-15T10:00:00Z"
-        },
-        {
-          id: "2",
-          descripcion: "Pago de agua",
-          monto: 15000,
-          categoria: "agua",
-          fecha_gasto: "2025-01-10",
-          created_at: "2025-01-10T10:00:00Z",
-          updated_at: "2025-01-10T10:00:00Z"
-        }
-      ])
+      // Convertir los datos al formato esperado por el frontend
+      const gastosFormateados = data.map((gasto: any) => ({
+        id: gasto.id.toString(),
+        descripcion: gasto.descripcion,
+        monto: parseFloat(gasto.monto),
+        categoria: gasto.categoria,
+        fecha_gasto: gasto.fecha_gasto.split('T')[0], // Convertir a formato YYYY-MM-DD
+        created_at: gasto.created_at,
+        updated_at: gasto.updated_at
+      }))
+      console.log("💰 Gastos formateados:", gastosFormateados)
+      
+              // Filtrar por año y mes seleccionados
+        console.log(`Filtrando gastos - SelectedYear: ${selectedYear}, SelectedMonth: ${selectedMonth}`)
+        const gastosFiltrados = gastosFormateados.filter((gasto: GastoTaller) => {
+          const fechaGasto = new Date(gasto.fecha_gasto)
+          const anoGasto = fechaGasto.getFullYear()
+          const mesGasto = fechaGasto.getMonth()
+          const coincide = anoGasto === selectedYear && mesGasto === selectedMonth
+          
+          console.log(`Gasto: ${gasto.descripcion}, Fecha: ${gasto.fecha_gasto}, Año: ${anoGasto}, Mes: ${mesGasto}, Selected: ${selectedYear}/${selectedMonth}, Coincide: ${coincide}`)
+          
+          return coincide
+        })
+       
+      console.log("💰 Gastos filtrados:", gastosFiltrados)
+      setGastos(gastosFiltrados)
     } catch (error) {
-      console.error("Error al cargar gastos:", error)
+      console.error("❌ Error al cargar gastos:", error)
+      if (error instanceof Error) {
+        console.error("❌ Detalles del error:", {
+          message: error.message,
+          stack: error.stack
+        })
+      } else {
+        console.error("❌ Error desconocido:", error)
+      }
       setErrorGastos("Error al cargar los gastos del taller")
     } finally {
       setLoadingGastos(false)
     }
-  }, [])
+  }, [selectedYear, selectedMonth])
 
   // Función para cargar pagos de salarios
   const cargarPagosSalarios = useCallback(async () => {
     try {
+      console.log("💵 Cargando pagos de salarios...")
       setLoadingPagos(true)
       setErrorPagos(null)
       
-      // TODO: Implementar llamada a la API cuando esté lista
-      // const response = await fetch('/api/pagos-salarios')
-      // const data = await response.json()
-      // setPagosSalarios(data)
+      const response = await fetch(buildApiUrl('/pagos-salarios'))
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      const data = await response.json()
+      console.log("💵 Pagos recibidos de la API:", data)
       
-      // Datos de ejemplo por ahora
-      setPagosSalarios([
-        {
-          id: "1",
-          id_mecanico: "1",
-          nombre_mecanico: "Juan Pérez",
-          monto_salario: 80000,
-          semana_pago: "2025-W01",
-          fecha_pago: "2025-01-06",
-          created_at: "2025-01-06T10:00:00Z"
-        }
-      ])
+      // Convertir los datos al formato esperado por el frontend
+      const pagosFormateados = data.map((pago: any) => ({
+        id: pago.id.toString(),
+        id_mecanico: pago.id_mecanico.toString(),
+        nombre_mecanico: pago.nombre_mecanico || "Mecánico",
+        monto_salario: parseFloat(pago.monto_salario),
+        semana_pago: pago.semana_pago,
+        fecha_pago: pago.fecha_pago.split('T')[0], // Convertir a formato YYYY-MM-DD
+        created_at: pago.created_at
+      }))
+      console.log("💵 Pagos formateados:", pagosFormateados)
+      
+      // Filtrar por año y mes seleccionados
+      const pagosFiltrados = pagosFormateados.filter((pago: PagoSalario) => {
+        const fechaPago = new Date(pago.fecha_pago)
+        return fechaPago.getFullYear() === selectedYear && 
+               fechaPago.getMonth() === selectedMonth
+      })
+      
+      console.log("💵 Pagos filtrados:", pagosFiltrados)
+      setPagosSalarios(pagosFiltrados)
     } catch (error) {
-      console.error("Error al cargar pagos de salarios:", error)
+      console.error("❌ Error al cargar pagos de salarios:", error)
+      if (error instanceof Error) {
+        console.error("❌ Detalles del error:", {
+          message: error.message,
+          stack: error.stack
+        })
+      } else {
+        console.error("❌ Error desconocido:", error)
+      }
       setErrorPagos("Error al cargar los pagos de salarios")
     } finally {
       setLoadingPagos(false)
     }
-  }, [])
+  }, [selectedYear, selectedMonth])
 
   // Función para cargar mecánicos
   const cargarMecanicos = useCallback(async () => {
     try {
-      // TODO: Implementar llamada a la API cuando esté lista
-      // const response = await fetch('/api/mecanicos')
-      // const data = await response.json()
-      // setMecanicos(data)
+      console.log("👥 Cargando mecánicos...")
+      const response = await fetch(buildApiUrl('/mecanicos'))
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      const data = await response.json()
+      console.log("👥 Mecánicos recibidos de la API:", data)
       
-      // Datos de ejemplo por ahora
-      setMecanicos([
-        { id: "1", nombre: "Juan Pérez" },
-        { id: "2", nombre: "Carlos López" },
-        { id: "3", nombre: "Miguel Rodríguez" }
-      ])
+      // Convertir los datos al formato esperado por el frontend
+      const mecanicosFormateados = data.map((mecanico: any) => ({
+        id: mecanico.id.toString(),
+        nombre: mecanico.nombre
+      }))
+      
+      console.log("👥 Mecánicos formateados:", mecanicosFormateados)
+      setMecanicos(mecanicosFormateados)
     } catch (error) {
-      console.error("Error al cargar mecánicos:", error)
+      console.error("❌ Error al cargar mecánicos:", error)
+      if (error instanceof Error) {
+        console.error("❌ Detalles del error:", {
+          message: error.message,
+          stack: error.stack
+        })
+      } else {
+        console.error("❌ Error desconocido:", error)
+      }
     }
   }, [])
 
@@ -250,15 +528,16 @@ export function TallerSection() {
     )
   }, [gastos, searchTermGastos])
 
-  // Estadísticas de gastos
-  const statsGastos = useMemo(() => {
+  // Estadísticas de gastos del taller
+  const statsGastosTaller = useMemo(() => {
     const totalGastos = gastos.length
     const totalMonto = gastos.reduce((sum, gasto) => sum + gasto.monto, 0)
+    
+    // Usar las fechas seleccionadas en lugar de la fecha actual
     const gastosMes = gastos.filter(gasto => {
       const fechaGasto = new Date(gasto.fecha_gasto)
-      const fechaActual = new Date()
-      return fechaGasto.getMonth() === fechaActual.getMonth() && 
-             fechaGasto.getFullYear() === fechaActual.getFullYear()
+      return fechaGasto.getMonth() === selectedMonth && 
+             fechaGasto.getFullYear() === selectedYear
     })
     const totalMes = gastosMes.reduce((sum, gasto) => sum + gasto.monto, 0)
 
@@ -268,17 +547,18 @@ export function TallerSection() {
       totalMes,
       gastosMes: gastosMes.length
     }
-  }, [gastos])
+  }, [gastos, selectedYear, selectedMonth])
 
   // Estadísticas de salarios
   const statsSalarios = useMemo(() => {
     const totalPagos = pagosSalarios.length
     const totalSalarios = pagosSalarios.reduce((sum, pago) => sum + pago.monto_salario, 0)
+    
+    // Usar las fechas seleccionadas en lugar de la fecha actual
     const pagosMes = pagosSalarios.filter(pago => {
       const fechaPago = new Date(pago.fecha_pago)
-      const fechaActual = new Date()
-      return fechaPago.getMonth() === fechaActual.getMonth() && 
-             fechaPago.getFullYear() === fechaActual.getFullYear()
+      return fechaPago.getMonth() === selectedMonth && 
+             fechaPago.getFullYear() === selectedYear
     })
     const totalMes = pagosMes.reduce((sum, pago) => sum + pago.monto_salario, 0)
 
@@ -288,7 +568,18 @@ export function TallerSection() {
       totalMes,
       pagosMes: pagosMes.length
     }
-  }, [pagosSalarios])
+  }, [pagosSalarios, selectedYear, selectedMonth])
+
+  // Estadísticas combinadas (gastos + salarios)
+  const statsCombinadas = useMemo(() => {
+    const totalGastosCombinados = statsGastosTaller.totalMonto + statsSalarios.totalSalarios
+    const totalMesCombinado = statsGastosTaller.totalMes + statsSalarios.totalMes
+    
+    return {
+      totalGastosCombinados,
+      totalMesCombinado
+    }
+  }, [statsGastosTaller, statsSalarios])
 
   // Funciones para gastos del taller
   const handleCreateGasto = useCallback(async () => {
@@ -299,23 +590,34 @@ export function TallerSection() {
     if (newGasto.categoria === "otros" && !categoriaPersonalizada.trim()) return
 
     try {
-      // TODO: Implementar llamada a la API cuando esté lista
-      // const response = await fetch('/api/gastos-taller', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ ...newGasto, categoria: categoriaFinal })
-      // })
-      // const gastoCreado = await response.json()
+      const response = await fetch(buildApiUrl('/gastos-taller'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          ...newGasto, 
+          categoria: categoriaFinal,
+          fecha_gasto: new Date(newGasto.fecha_gasto).toISOString()
+        })
+      })
       
-      const gastoCreado: GastoTaller = {
-        id: Date.now().toString(),
-        ...newGasto,
-        categoria: categoriaFinal,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
       
-      setGastos(prev => [...prev, gastoCreado])
+      const gastoCreado = await response.json()
+      
+      // Convertir al formato del frontend
+      const gastoFormateado: GastoTaller = {
+        id: gastoCreado.id.toString(),
+        descripcion: gastoCreado.descripcion,
+        monto: parseFloat(gastoCreado.monto),
+        categoria: gastoCreado.categoria,
+        fecha_gasto: gastoCreado.fecha_gasto.split('T')[0],
+        created_at: gastoCreado.created_at,
+        updated_at: gastoCreado.updated_at
+      }
+      
+      setGastos(prev => [...prev, gastoFormateado])
       setNewGasto({
         descripcion: "",
         monto: 0,
@@ -325,7 +627,15 @@ export function TallerSection() {
       setCategoriaPersonalizada("")
       setIsCreateGastoDialogOpen(false)
     } catch (error) {
-      console.error("Error al crear gasto:", error)
+      console.error("❌ Error al crear gasto:", error)
+      if (error instanceof Error) {
+        console.error("❌ Detalles del error:", {
+          message: error.message,
+          stack: error.stack
+        })
+      } else {
+        console.error("❌ Error desconocido:", error)
+      }
     }
   }, [newGasto, categoriaPersonalizada])
 
@@ -337,28 +647,49 @@ export function TallerSection() {
     if (editGasto.categoria === "otros" && !editCategoriaPersonalizada.trim()) return
 
     try {
-      // TODO: Implementar llamada a la API cuando esté lista
-      // const response = await fetch(`/api/gastos-taller/${selectedGasto.id}`, {
-      //   method: 'PUT',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ ...editGasto, categoria: categoriaFinal })
-      // })
+      const response = await fetch(buildApiUrl(`/gastos-taller/${selectedGasto.id}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          ...editGasto, 
+          categoria: categoriaFinal,
+          fecha_gasto: new Date(editGasto.fecha_gasto).toISOString()
+        })
+      })
       
-      const gastoActualizado: GastoTaller = {
-        ...selectedGasto,
-        ...editGasto,
-        categoria: categoriaFinal,
-        updated_at: new Date().toISOString()
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      const gastoActualizado = await response.json()
+      
+      // Convertir al formato del frontend
+      const gastoFormateado: GastoTaller = {
+        id: gastoActualizado.id.toString(),
+        descripcion: gastoActualizado.descripcion,
+        monto: parseFloat(gastoActualizado.monto),
+        categoria: gastoActualizado.categoria,
+        fecha_gasto: gastoActualizado.fecha_gasto.split('T')[0],
+        created_at: gastoActualizado.created_at,
+        updated_at: gastoActualizado.updated_at
       }
       
       setGastos(prev => prev.map(gasto => 
-        gasto.id === selectedGasto.id ? gastoActualizado : gasto
+        gasto.id === selectedGasto.id ? gastoFormateado : gasto
       ))
       setIsEditGastoDialogOpen(false)
       setSelectedGasto(null)
       setEditCategoriaPersonalizada("")
     } catch (error) {
-      console.error("Error al editar gasto:", error)
+      console.error("❌ Error al editar gasto:", error)
+      if (error instanceof Error) {
+        console.error("❌ Detalles del error:", {
+          message: error.message,
+          stack: error.stack
+        })
+      } else {
+        console.error("❌ Error desconocido:", error)
+      }
     }
   }, [selectedGasto, editGasto, editCategoriaPersonalizada])
 
@@ -366,53 +697,361 @@ export function TallerSection() {
     if (!selectedGasto) return
 
     try {
-      // TODO: Implementar llamada a la API cuando esté lista
-      // await fetch(`/api/gastos-taller/${selectedGasto.id}`, { method: 'DELETE' })
+      const response = await fetch(buildApiUrl(`/gastos-taller/${selectedGasto.id}`), { 
+        method: 'DELETE' 
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
       
       setGastos(prev => prev.filter(gasto => gasto.id !== selectedGasto.id))
       setIsDeleteGastoDialogOpen(false)
       setSelectedGasto(null)
     } catch (error) {
-      console.error("Error al eliminar gasto:", error)
+      console.error("❌ Error al eliminar gasto:", error)
+      if (error instanceof Error) {
+        console.error("❌ Detalles del error:", {
+          message: error.message,
+          stack: error.stack
+        })
+      } else {
+        console.error("❌ Error desconocido:", error)
+      }
     }
   }, [selectedGasto])
 
+  // Nueva función para verificar si es quincena (semana 2 o 4)
+  const esQuincena = useCallback((semana: string) => {
+    // Sistema de 2 quincenas por mes: Q1 (semanas 1-2), Q2 (semanas 3-4)
+    const resultado = semana === "2" || semana === "4"
+    console.log("🔍 esQuincena:", { semana, resultado })
+    return resultado
+  }, [])
+
   // Funciones para pagos de salarios
   const handlePagoSalarios = useCallback(async () => {
-    if (!nuevoPagoSalario.id_mecanico || nuevoPagoSalario.monto_salario <= 0) return
+    console.log("💵 handlePagoSalarios ejecutado:", nuevoPagoSalario)
+    
+    if (!nuevoPagoSalario.id_mecanico || nuevoPagoSalario.monto_salario <= 0) {
+      console.log("❌ handlePagoSalarios: Datos inválidos")
+      return
+    }
 
     try {
-      // TODO: Implementar llamada a la API cuando esté lista
-      // const response = await fetch('/api/pagos-salarios', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(nuevoPagoSalario)
-      // })
-      // const pagoCreado = await response.json()
+             // Crear el pago de salario con el monto total (salario + comisiones aprobadas)
+       const montoTotal = totalPagoConComision > 0 ? totalPagoConComision : nuevoPagoSalario.monto_salario
+       
+       const requestBody = {
+         ...nuevoPagoSalario,
+         monto_salario: montoTotal, // Usar el monto total en lugar del salario base
+         fecha_pago: nuevoPagoSalario.fecha_pago // Enviar solo la fecha, no la hora
+       }
+       console.log("💵 Request body:", requestBody)
+       
+       const response = await fetch(buildApiUrl('/pagos-salarios'), {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify(requestBody)
+       })
       
-      const mecanico = mecanicos.find(m => m.id === nuevoPagoSalario.id_mecanico)
-      const pagoCreado: PagoSalario = {
-        id: Date.now().toString(),
-        id_mecanico: nuevoPagoSalario.id_mecanico,
-        nombre_mecanico: mecanico?.nombre || "Mecánico",
-        monto_salario: nuevoPagoSalario.monto_salario,
-        semana_pago: nuevoPagoSalario.semana_pago,
-        fecha_pago: nuevoPagoSalario.fecha_pago,
-        created_at: new Date().toISOString()
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
       
-      setPagosSalarios(prev => [...prev, pagoCreado])
-      setNuevoPagoSalario({
+      const pagoCreado = await response.json()
+      console.log("💵 Pago creado en la API:", pagoCreado)
+      
+      // Convertir al formato del frontend
+      const pagoFormateado: PagoSalario = {
+        id: pagoCreado.id.toString(),
+        id_mecanico: pagoCreado.id_mecanico.toString(),
+        nombre_mecanico: pagoCreado.nombre_mecanico || "Mecánico",
+        monto_salario: parseFloat(pagoCreado.monto_salario),
+        semana_pago: pagoCreado.semana_pago,
+        fecha_pago: pagoCreado.fecha_pago.split('T')[0],
+        created_at: pagoCreado.created_at
+      }
+      console.log("💵 Pago formateado:", pagoFormateado)
+      
+             // Si es quincena y hay comisiones, marcar las comisiones como aprobadas
+       if (esQuincena(nuevoPagoSalario.semana_pago) && comisionesQuincena.length > 0) {
+         try {
+           console.log("💰 Procesando comisiones para el pago...")
+           
+           // Marcar las comisiones como aprobadas en la base de datos
+           const fechaPago = new Date(nuevoPagoSalario.fecha_pago)
+           const año = fechaPago.getFullYear()
+           const quincena = `${año}-Q${nuevoPagoSalario.semana_pago}`
+           
+           // Llamar a la API para aprobar las comisiones
+           const responseComisiones = await fetch(`${buildApiUrl('/mecanicos')}/${nuevoPagoSalario.id_mecanico}/comisiones/quincena/${quincena}/estado`, {
+             method: 'POST',
+             headers: {
+               'Content-Type': 'application/json',
+             },
+             body: JSON.stringify({ aprobar: true })
+           })
+           
+           if (responseComisiones.ok) {
+             console.log("✅ Comisiones marcadas como aprobadas exitosamente")
+           } else {
+             console.warn("⚠️ No se pudieron marcar las comisiones como aprobadas")
+           }
+           
+           console.log("💰 Comisiones incluidas en el pago:", {
+             mecanicoId: nuevoPagoSalario.id_mecanico,
+             semana: nuevoPagoSalario.semana_pago,
+             totalComisiones: totalPagoConComision - nuevoPagoSalario.monto_salario,
+             totalPago: totalPagoConComision
+           })
+           
+         } catch (error) {
+           console.error("Error al procesar comisiones:", error)
+           // No fallar si hay error con las comisiones, solo loguear
+         }
+       } else {
+         console.log("💰 No hay comisiones para procesar:", {
+           esQuincena: esQuincena(nuevoPagoSalario.semana_pago),
+           comisionesLength: comisionesQuincena.length
+         })
+       }
+      
+      setPagosSalarios(prev => [...prev, pagoFormateado])
+      console.log("💵 Pago agregado a la lista local")
+      
+      const nuevoEstado = {
         id_mecanico: "",
         monto_salario: 0,
         semana_pago: obtenerSemanaActual(),
         fecha_pago: new Date().toISOString().split('T')[0]
-      })
+      }
+      console.log("💵 Nuevo estado para nuevoPagoSalario:", nuevoEstado)
+      setNuevoPagoSalario(nuevoEstado)
+      
+             // Actualizar estado de comisiones como aprobadas
+       if (esQuincena(nuevoPagoSalario.semana_pago) && comisionesQuincena.length > 0) {
+         const fechaPago = new Date(nuevoPagoSalario.fecha_pago)
+         const año = fechaPago.getFullYear()
+         const quincena = `${año}-Q${nuevoPagoSalario.semana_pago}`
+         
+         setEstadoQuincena({
+           mecanicoId: nuevoPagoSalario.id_mecanico,
+           quincena,
+           estado: "APROBADA",
+           totalComisiones: totalPagoConComision - nuevoPagoSalario.monto_salario
+         })
+       }
+       
+       // Limpiar estados de comisiones
+       console.log("💵 Limpiando estados de comisiones")
+       setComisionesQuincena([])
+       setTotalPagoConComision(0)
+      
       setIsPagoSalariosDialogOpen(false)
+      console.log("💵 Dialog cerrado")
     } catch (error) {
-      console.error("Error al crear pago de salario:", error)
+      console.error("❌ Error al crear pago de salario:", error)
+      if (error instanceof Error) {
+        console.error("❌ Detalles del error:", {
+          message: error.message,
+          stack: error.stack
+        })
+      } else {
+        console.error("❌ Error desconocido:", error)
+      }
     }
-  }, [nuevoPagoSalario, mecanicos, obtenerSemanaActual])
+  }, [nuevoPagoSalario, esQuincena, comisionesQuincena, totalPagoConComision, obtenerSemanaActual])
+
+  // Nueva función para cargar comisiones por quincena
+  const cargarComisionesQuincena = useCallback(async (mecanicoId: string, semana: string, fechaPago: string, montoSalario: number) => {
+    console.log("🔍 Cargando comisiones para:", { mecanicoId, semana, fechaPago, montoSalario })
+    
+    if (!esQuincena(semana)) {
+      console.log("❌ No es quincena, limpiando comisiones")
+      setComisionesQuincena([])
+      setTotalPagoConComision(montoSalario)
+      return
+    }
+
+    setLoadingComisiones(true)
+    try {
+      // Construir la quincena en formato YYYY-Q1, YYYY-Q2, etc.
+      const fechaPagoObj = new Date(fechaPago)
+      const año = fechaPagoObj.getFullYear()
+      const quincena = `${año}-Q${semana}`
+      
+      console.log("💰 Obteniendo comisiones del mecánico para quincena:", quincena)
+      
+      // Usar el endpoint correcto que obtiene comisiones por quincena
+      const url = buildApiUrl(`/mecanicos/${mecanicoId}/comisiones/quincena/${quincena}`)
+      console.log("🌐 Llamando a la API:", url)
+      
+      const response = await fetch(url)
+      console.log("📡 Status de la respuesta:", response.status)
+      console.log("📡 Headers de la respuesta:", response.headers)
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("❌ Error en la respuesta:", errorText)
+        throw new Error(`Error al obtener comisiones: ${response.status} - ${errorText}`)
+      }
+      
+      const comisiones = await response.json()
+      console.log("📊 Comisiones recibidas de la API:", comisiones)
+      console.log("📊 Total de comisiones recibidas:", comisiones.length)
+      
+      if (comisiones.length === 0) {
+        console.log("⚠️ No hay comisiones para este mecánico en esta quincena")
+        setComisionesQuincena([])
+        setTotalPagoConComision(montoSalario)
+        setLoadingComisiones(false)
+        return
+      }
+      
+      // Convertir comisiones al formato esperado por el frontend
+      const comisionesFormateadas = comisiones.map((comision: any) => ({
+        id: comision.id.toString(),
+        id_mecanico: mecanicoId,
+        monto_comision: comision.monto_comision || 0,
+        fecha_comision: comision.fecha_trabajo,
+        descripcion_trabajo: comision.descripcion_trabajo,
+        ganancia_base: 0, // No necesitamos esto para comisiones existentes
+        estado: comision.estado_comision // Usar el estado real de la base de datos
+      }))
+      
+      setComisionesQuincena(comisionesFormateadas)
+      
+      // Calcular total de comisiones (solo las que estén en estado PENDIENTE o APROBADA)
+      const totalComisiones = comisionesFormateadas
+        .filter((comision: ComisionQuincena) => comision.estado === 'PENDIENTE' || comision.estado === 'APROBADA')
+        .reduce((sum: number, comisionItem: ComisionQuincena) => {
+          return sum + (Number(comisionItem.monto_comision) || 0)
+        }, 0)
+      
+      console.log("💰 Total comisiones disponibles:", totalComisiones)
+      
+      // Calcular total del pago (salario + comisiones disponibles)
+      const totalPago = montoSalario + totalComisiones
+      setTotalPagoConComision(totalPago)
+      
+      console.log("💵 Total pago con comisiones:", totalPago)
+      
+    } catch (error) {
+      console.error("❌ Error al cargar comisiones por quincena:", error)
+      if (error instanceof Error) {
+        console.error("❌ Detalles del error:", {
+          message: error.message,
+          stack: error.stack
+        })
+      } else {
+        console.error("❌ Error desconocido:", error)
+      }
+      setComisionesQuincena([])
+      setTotalPagoConComision(montoSalario)
+    } finally {
+      setLoadingComisiones(false)
+    }
+  }, [esQuincena])
+
+  // Función para aprobar o denegar comisiones de quincena
+  const aprobarDenegarComisionesQuincena = useCallback(async (aprobar: boolean) => {
+    if (!nuevoPagoSalario.id_mecanico || !nuevoPagoSalario.semana_pago) {
+      console.error("❌ No hay mecánico o semana seleccionada")
+      return
+    }
+
+    try {
+      setLoadingEstadoQuincena(true)
+      console.log("🔄 Aprobando/Denegando comisiones de quincena:", { aprobar })
+
+      // Construir la quincena en formato YYYY-Q1, YYYY-Q2, etc.
+      const fechaPago = new Date(nuevoPagoSalario.fecha_pago)
+      const año = fechaPago.getFullYear()
+      const quincena = `${año}-Q${nuevoPagoSalario.semana_pago}`
+
+             const response = await fetch(`${buildApiUrl('/mecanicos')}/${nuevoPagoSalario.id_mecanico}/comisiones/quincena/${quincena}/estado`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ aprobar })
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Error al procesar comisiones: ${response.status} - ${errorText}`)
+      }
+
+      const resultado = await response.json()
+      console.log("✅ Resultado de aprobación/denegación:", resultado)
+
+      if (aprobar) {
+        // Si se aprueban, mantener las comisiones y calcular el total
+        const totalComisiones = comisionesQuincena.reduce((sum, comision) => sum + (Number(comision.monto_comision) || 0), 0)
+        setTotalPagoConComision(nuevoPagoSalario.monto_salario + totalComisiones)
+        setEstadoQuincena({
+          mecanicoId: nuevoPagoSalario.id_mecanico,
+          quincena,
+          estado: "APROBADA",
+          totalComisiones
+        })
+      } else {
+        // Si se deniegan, limpiar comisiones y recalcular total
+        setComisionesQuincena([])
+        setTotalPagoConComision(nuevoPagoSalario.monto_salario)
+        setEstadoQuincena({
+          mecanicoId: nuevoPagoSalario.id_mecanico,
+          quincena,
+          estado: "DENEGADA",
+          totalComisiones: 0
+        })
+      }
+
+    } catch (error) {
+      console.error("❌ Error al aprobar/denegar comisiones:", error)
+      if (error instanceof Error) {
+        console.error("❌ Detalles del error:", {
+          message: error.message,
+          stack: error.stack
+        })
+      }
+    } finally {
+      setLoadingEstadoQuincena(false)
+    }
+  }, [nuevoPagoSalario.id_mecanico, nuevoPagoSalario.semana_pago, nuevoPagoSalario.fecha_pago, nuevoPagoSalario.monto_salario, comisionesQuincena])
+
+  // Cargar comisiones automáticamente cuando se abra el diálogo de pagos
+  useEffect(() => {
+    console.log("🎯 useEffect isPagoSalariosDialogOpen ejecutado:", {
+      isPagoSalariosDialogOpen,
+      id_mecanico: nuevoPagoSalario.id_mecanico,
+      semana_pago: nuevoPagoSalario.semana_pago
+    })
+    
+    if (isPagoSalariosDialogOpen && nuevoPagoSalario.id_mecanico && nuevoPagoSalario.semana_pago) {
+      console.log("🎯 Dialog abierto, cargando comisiones automáticamente")
+      cargarComisionesQuincena(nuevoPagoSalario.id_mecanico, nuevoPagoSalario.semana_pago, nuevoPagoSalario.fecha_pago, nuevoPagoSalario.monto_salario)
+    }
+  }, [isPagoSalariosDialogOpen, nuevoPagoSalario.id_mecanico, nuevoPagoSalario.semana_pago, cargarComisionesQuincena])
+
+  // Cargar comisiones cuando cambie la fecha del pago (solo si es necesario)
+  useEffect(() => {
+    // Solo ejecutar si el diálogo está abierto y tenemos todos los datos necesarios
+    if (isPagoSalariosDialogOpen && 
+        nuevoPagoSalario.id_mecanico && 
+        nuevoPagoSalario.semana_pago && 
+        esQuincena(nuevoPagoSalario.semana_pago)) {
+      
+      console.log("📅 Fecha del pago cambiada, recargando comisiones")
+      cargarComisionesQuincena(
+        nuevoPagoSalario.id_mecanico, 
+        nuevoPagoSalario.semana_pago, 
+        nuevoPagoSalario.fecha_pago, 
+        nuevoPagoSalario.monto_salario
+      )
+    }
+  }, [nuevoPagoSalario.fecha_pago, isPagoSalariosDialogOpen, nuevoPagoSalario.id_mecanico, nuevoPagoSalario.semana_pago, esQuincena, cargarComisionesQuincena])
 
   // Funciones auxiliares
   const openViewGastoDialog = useCallback((gasto: GastoTaller) => {
@@ -459,72 +1098,219 @@ export function TallerSection() {
   return (
     <div className="space-y-6 p-6">
       {/* ======================================== */}
+      {/* SELECTOR DE PERIODO TEMPORAL COMPACTO */}
+      {/* ======================================== */}
+      <Card className="bg-gradient-to-r from-slate-50 to-blue-50 border-slate-200 shadow-sm">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            {/* Título y controles en línea */}
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-blue-600" />
+                <span className="text-sm font-medium text-slate-700">Período:</span>
+              </div>
+              
+              {/* Selector de Año */}
+              <select
+                value={selectedYear}
+                onChange={(e) => {
+                  setSelectedYear(Number(e.target.value))
+                  verificarPeriodoActual()
+                }}
+                className="px-2 py-1 border border-slate-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+              >
+                {availableYears.map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+              
+              {/* Selector de Mes */}
+              <select
+                value={selectedMonth}
+                onChange={(e) => {
+                  setSelectedMonth(Number(e.target.value))
+                  verificarPeriodoActual()
+                }}
+                className="px-2 py-1 border border-slate-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+              >
+                <option value={0}>Ene</option>
+                <option value={1}>Feb</option>
+                <option value={2}>Mar</option>
+                <option value={3}>Abr</option>
+                <option value={4}>May</option>
+                <option value={5}>Jun</option>
+                <option value={6}>Jul</option>
+                <option value={7}>Ago</option>
+                <option value={8}>Sep</option>
+                <option value={9}>Oct</option>
+                <option value={10}>Nov</option>
+                <option value={11}>Dic</option>
+              </select>
+              
+              {/* Botón Mes Actual */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const fechaActual = new Date()
+                  setSelectedYear(fechaActual.getFullYear())
+                  setSelectedMonth(fechaActual.getMonth())
+                  verificarPeriodoActual()
+                }}
+                className="h-7 px-3 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
+              >
+                <RefreshCw className="h-3 w-3 mr-1" />
+                Actual
+              </Button>
+            </div>
+            
+            {/* Información del período y estado */}
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-xs text-slate-500">Período</p>
+                <p className="text-sm font-medium text-slate-700">
+                  {new Date(selectedYear, selectedMonth).toLocaleDateString('es-CR', { 
+                    month: 'short', 
+                    year: 'numeric' 
+                  })}
+                </p>
+              </div>
+              
+              {/* Indicador de estado */}
+              {!isCurrentPeriod ? (
+                <Badge className="bg-amber-100 text-amber-800 text-xs px-2 py-1">
+                  Histórico
+                </Badge>
+              ) : esFinDeMes() ? (
+                <Badge className="bg-red-100 text-red-800 text-xs px-2 py-1 animate-pulse">
+                  🔄 Fin de Mes
+                </Badge>
+              ) : (
+                <Badge className="bg-green-100 text-green-800 text-xs px-2 py-1">
+                  Actual
+                </Badge>
+              )}
+              
+              <div className="text-right">
+                <p className="text-xs text-slate-500">Registros</p>
+                <p className="text-sm font-bold text-slate-700">
+                  {gastos.length + pagosSalarios.length}
+                </p>
+              </div>
+            </div>
+                     </div>
+           
+           {/* Mensaje de fin de mes */}
+           {isCurrentPeriod && esFinDeMes() && (
+             <div className="mt-3 p-3 bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg">
+               <div className="flex items-center gap-2 text-red-700">
+                 <RefreshCw className="h-4 w-4 animate-spin" />
+                 <span className="text-sm font-medium">
+                   🎯 Fin de mes detectado - Los datos se reiniciarán automáticamente al nuevo mes
+                 </span>
+               </div>
+               <p className="text-xs text-red-600 mt-1">
+                 Las listas se mostrarán vacías para el nuevo período, pero todos los datos históricos se mantienen en la base de datos
+               </p>
+             </div>
+           )}
+         </CardContent>
+       </Card>
+
+      {/* ======================================== */}
       {/* TARJETA: ESTADÍSTICAS PRINCIPALES */}
       {/* ======================================== */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 shadow-lg">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Gastos</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-blue-800">Total Gastos</CardTitle>
+            <div className="p-2 bg-blue-500 rounded-lg">
+              <DollarSign className="h-4 w-4 text-white" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₡{statsGastos.totalMonto.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              {statsGastos.totalGastos} gastos registrados
+            <div className="text-3xl font-bold text-blue-900 mb-1">₡{statsCombinadas.totalGastosCombinados.toLocaleString()}</div>
+            <p className="text-xs text-blue-700">
+              Gastos del taller + Salarios totales
+            </p>
+            {!isCurrentPeriod && (
+              <p className="text-xs text-blue-600 mt-1 font-medium">
+                {new Date(selectedYear, selectedMonth).toLocaleDateString('es-CR', { month: 'long', year: 'numeric' })}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 shadow-lg">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-green-800">Gastos del Mes</CardTitle>
+            <div className="p-2 bg-green-500 rounded-lg">
+              <Calendar className="h-4 w-4 text-white" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-green-900 mb-1">₡{statsCombinadas.totalMesCombinado.toLocaleString()}</div>
+            <p className="text-xs text-green-700">
+              {statsGastosTaller.gastosMes + statsSalarios.pagosMes} registros este mes
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 shadow-lg">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Gastos del Mes</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-purple-800">Salarios del Mes</CardTitle>
+            <div className="p-2 bg-purple-500 rounded-lg">
+              <Users className="h-4 w-4 text-white" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₡{statsGastos.totalMes.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              {statsGastos.gastosMes} gastos este mes
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Salarios</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">₡{statsSalarios.totalSalarios.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              {statsSalarios.totalPagos} pagos realizados
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Salarios del Mes</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">₡{statsSalarios.totalMes.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
+            <div className="text-3xl font-bold text-purple-900 mb-1">₡{statsSalarios.totalMes.toLocaleString()}</div>
+            <p className="text-xs text-purple-700">
               {statsSalarios.pagosMes} pagos este mes
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* ======================================== */}
-      {/* TARJETA: GASTOS DEL TALLER */}
+            {/* ======================================== */}
+      {/* TARJETA: GASTOS DEL TALLER / PAGOS DE SALARIOS */}
       {/* ======================================== */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Wrench className="h-4 w-4 text-blue-600" />
-            Gastos del Taller
+            {mostrarGastos ? (
+              <>
+                <Wrench className="h-4 w-4 text-blue-600" />
+                Gastos del Taller
+              </>
+            ) : (
+              <>
+                <Users className="h-4 w-4 text-green-600" />
+                Pagos de Salarios
+              </>
+            )}
           </CardTitle>
           <div className="flex items-center gap-2">
+            {/* Botón para alternar entre gastos y pagos */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setMostrarGastos(!mostrarGastos)}
+              className="text-xs"
+            >
+              {mostrarGastos ? (
+                <>
+                  <Users className="h-3 w-3 mr-1" />
+                  Ver Salarios
+                </>
+              ) : (
+                <>
+                  <Wrench className="h-3 w-3 mr-1" />
+                  Ver Gastos
+                </>
+              )}
+            </Button>
+            
             <Button
               variant="outline"
               size="sm"
@@ -534,180 +1320,183 @@ export function TallerSection() {
               <RefreshCw className="h-3 w-3 mr-1" />
               Actualizar
             </Button>
-            <Button
-              onClick={() => setIsCreateGastoDialogOpen(true)}
-              size="sm"
-              className="text-xs"
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              Nuevo Gasto
-            </Button>
+            
+            {mostrarGastos ? (
+              <Button
+                onClick={() => setIsCreateGastoDialogOpen(true)}
+                size="sm"
+                className="text-xs"
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Nuevo Gasto
+              </Button>
+            ) : (
+              <Button
+                onClick={() => setIsPagoSalariosDialogOpen(true)}
+                size="sm"
+                className="text-xs"
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Pagar Salarios
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center py-4">
-            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-            <Input
-              placeholder="Buscar gastos..."
-              value={searchTermGastos}
-              onChange={(e) => setSearchTermGastos(e.target.value)}
-              className="max-w-sm"
-            />
-          </div>
+          {/* CONTENIDO DE GASTOS */}
+          {mostrarGastos && (
+            <>
+              <div className="flex items-center py-4">
+                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                <Input
+                  placeholder="Buscar gastos..."
+                  value={searchTermGastos}
+                  onChange={(e) => setSearchTermGastos(e.target.value)}
+                  className="max-w-sm"
+                />
+              </div>
 
-          {loadingGastos ? (
-            <div className="flex items-center justify-center py-8">
-              <LoadingSpinner size="lg" />
-              <span className="ml-3 text-lg">Cargando gastos...</span>
-            </div>
-                     ) : errorGastos ? (
-             <ErrorMessage error={new Error(errorGastos)} />
-           ) : (
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Descripción</TableHead>
-                    <TableHead>Categoría</TableHead>
-                    <TableHead>Monto</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredGastos.map((gasto) => {
-                    const CategoriaIcon = getCategoriaIcon(gasto.categoria)
-                    return (
-                      <TableRow key={gasto.id}>
-                        <TableCell className="max-w-xs truncate">
-                          {gasto.descripcion}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                            <CategoriaIcon className="h-3 w-3" />
-                            {getCategoriaLabel(gasto.categoria)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-medium text-red-600">
-                          ₡{gasto.monto.toLocaleString()}
-                        </TableCell>
-                        <TableCell>
-                          {new Date(gasto.fecha_gasto).toLocaleDateString('es-CR')}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              onClick={() => openViewGastoDialog(gasto)}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              onClick={() => openEditGastoDialog(gasto)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                              onClick={() => openDeleteGastoDialog(gasto)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
+              {loadingGastos ? (
+                <div className="flex items-center justify-center py-8">
+                  <LoadingSpinner size="lg" />
+                  <span className="ml-3 text-lg">Cargando gastos...</span>
+                </div>
+              ) : errorGastos ? (
+                <ErrorMessage error={new Error(errorGastos)} />
+              ) : (
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Descripción</TableHead>
+                        <TableHead>Categoría</TableHead>
+                        <TableHead>Monto</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredGastos.map((gasto) => {
+                        const CategoriaIcon = getCategoriaIcon(gasto.categoria)
+                        return (
+                          <TableRow key={gasto.id}>
+                            <TableCell className="max-w-xs truncate">
+                              {gasto.descripcion}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="flex items-center gap-1 w-fit">
+                                <CategoriaIcon className="h-3 w-3" />
+                                {getCategoriaLabel(gasto.categoria)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-medium text-red-600">
+                              ₡{gasto.monto.toLocaleString()}
+                            </TableCell>
+                            <TableCell>
+                              {new Date(gasto.fecha_gasto).toLocaleDateString('es-CR')}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() => openViewGastoDialog(gasto)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() => openEditGastoDialog(gasto)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                                  onClick={() => openDeleteGastoDialog(gasto)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+              {filteredGastos.length === 0 && !loadingGastos && (
+                <div className="text-center py-8 text-muted-foreground">
+                  {searchTermGastos ? "No se encontraron gastos con esa búsqueda" : "No hay gastos registrados"}
+                </div>
+              )}
+            </>
           )}
-          {filteredGastos.length === 0 && !loadingGastos && (
-            <div className="text-center py-8 text-muted-foreground">
-              {searchTermGastos ? "No se encontraron gastos con esa búsqueda" : "No hay gastos registrados"}
-            </div>
+
+          {/* CONTENIDO DE PAGOS DE SALARIOS */}
+          {!mostrarGastos && (
+            <>
+              {loadingPagos ? (
+                <div className="flex items-center justify-center py-8">
+                  <LoadingSpinner size="lg" />
+                  <span className="ml-3 text-lg">Cargando pagos...</span>
+                </div>
+              ) : errorPagos ? (
+                <ErrorMessage error={new Error(errorPagos)} />
+              ) : (
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Mecánico</TableHead>
+                        <TableHead>Monto</TableHead>
+                        <TableHead>Semana</TableHead>
+                        <TableHead>Fecha Pago</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pagosSalarios.map((pago) => (
+                        <TableRow key={pago.id}>
+                          <TableCell className="font-medium">
+                            {pago.nombre_mecanico}
+                          </TableCell>
+                          <TableCell className="font-medium text-green-600">
+                            ₡{pago.monto_salario.toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {pago.semana_pago}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {new Date(pago.fecha_pago).toLocaleDateString('es-CR')}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+              {pagosSalarios.length === 0 && !loadingPagos && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Users className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                  <p className="text-lg">No hay pagos de salarios registrados</p>
+                  <p className="text-sm text-gray-500 mt-2">
+                    Haz clic en "Pagar Salarios" para registrar el primer pago
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
 
-      {/* ======================================== */}
-      {/* TARJETA: PAGOS DE SALARIOS */}
-      {/* ======================================== */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Users className="h-4 w-4 text-green-600" />
-            Pagos de Salarios
-          </CardTitle>
-          <Button
-            onClick={() => setIsPagoSalariosDialogOpen(true)}
-            size="sm"
-            className="text-xs"
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            Pagar Salarios
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {loadingPagos ? (
-            <div className="flex items-center justify-center py-8">
-              <LoadingSpinner size="lg" />
-              <span className="ml-3 text-lg">Cargando pagos...</span>
-            </div>
-                     ) : errorPagos ? (
-             <ErrorMessage error={new Error(errorPagos)} />
-           ) : (
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Mecánico</TableHead>
-                    <TableHead>Monto</TableHead>
-                    <TableHead>Semana</TableHead>
-                    <TableHead>Fecha Pago</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pagosSalarios.map((pago) => (
-                    <TableRow key={pago.id}>
-                      <TableCell className="font-medium">
-                        {pago.nombre_mecanico}
-                      </TableCell>
-                      <TableCell className="font-medium text-green-600">
-                        ₡{pago.monto_salario.toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {pago.semana_pago}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {new Date(pago.fecha_pago).toLocaleDateString('es-CR')}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-          {pagosSalarios.length === 0 && !loadingPagos && (
-            <div className="text-center py-8 text-muted-foreground">
-              <Users className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-              <p className="text-lg">No hay pagos de salarios registrados</p>
-              <p className="text-sm text-gray-500 mt-2">
-                Haz clic en "Pagar Salarios" para registrar el primer pago
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      
 
       {/* ======================================== */}
       {/* DIALOGOS */}
@@ -796,7 +1585,7 @@ export function TallerSection() {
 
       {/* Dialog para pagar salarios */}
       <Dialog open={isPagoSalariosDialogOpen} onOpenChange={setIsPagoSalariosDialogOpen}>
-        <DialogContent className="bg-white max-w-md">
+        <DialogContent className="bg-white max-w-lg">
           <DialogHeader>
             <DialogTitle>Pagar Salarios</DialogTitle>
             <DialogDescription>
@@ -809,7 +1598,17 @@ export function TallerSection() {
               <select
                 id="mecanico"
                 value={nuevoPagoSalario.id_mecanico}
-                onChange={(e) => setNuevoPagoSalario(prev => ({ ...prev, id_mecanico: e.target.value }))}
+                                 onChange={(e) => {
+                   const mecanicoId = e.target.value
+                   console.log("👤 Mecánico seleccionado:", mecanicoId)
+                   setNuevoPagoSalario(prev => ({ ...prev, id_mecanico: mecanicoId }))
+                   // Cargar comisiones si es quincena
+                   if (mecanicoId && nuevoPagoSalario.semana_pago) {
+                     console.log("🚀 Llamando cargarComisionesQuincena desde onChange del mecánico")
+                     console.log("🚀 Parámetros:", { mecanicoId, semana: nuevoPagoSalario.semana_pago })
+                     cargarComisionesQuincena(mecanicoId, nuevoPagoSalario.semana_pago, nuevoPagoSalario.fecha_pago, nuevoPagoSalario.monto_salario)
+                   }
+                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Seleccionar mecánico</option>
@@ -820,40 +1619,239 @@ export function TallerSection() {
                 ))}
               </select>
             </div>
-                         <div>
-               <Label htmlFor="monto_salario">Monto del Salario (₡)</Label>
-               <Input
-                 id="monto_salario"
-                 type="number"
-                 value={nuevoPagoSalario.monto_salario === 0 ? "" : nuevoPagoSalario.monto_salario}
-                 onChange={(e) => setNuevoPagoSalario(prev => ({ ...prev, monto_salario: parseFloat(e.target.value) || 0 }))}
-                 placeholder="0.00"
-                 min="0"
-                 step="0.01"
-               />
-             </div>
+            
+            <div>
+              <Label htmlFor="monto_salario">Monto del Salario (₡)</Label>
+              <Input
+                id="monto_salario"
+                type="number"
+                value={nuevoPagoSalario.monto_salario === 0 ? "" : nuevoPagoSalario.monto_salario}
+                onChange={(e) => {
+                  const monto = parseFloat(e.target.value) || 0
+                  setNuevoPagoSalario(prev => ({ ...prev, monto_salario: monto }))
+                                     // Recalcular total con comisiones (si están aprobadas)
+                   if (comisionesQuincena.length > 0 && estadoQuincena?.estado === "APROBADA") {
+                     const totalComisiones = comisionesQuincena
+                       .reduce((sum, comision: ComisionQuincena) => {
+                         return sum + (Number(comision.monto_comision) || 0)
+                       }, 0)
+                     setTotalPagoConComision(monto + totalComisiones)
+                   } else {
+                     setTotalPagoConComision(monto)
+                   }
+                }}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+              />
+            </div>
+            
             <div>
               <Label htmlFor="semana_pago">Semana de Pago</Label>
-              <Input
+              <select
                 id="semana_pago"
-                type="text"
                 value={nuevoPagoSalario.semana_pago}
-                onChange={(e) => setNuevoPagoSalario(prev => ({ ...prev, semana_pago: e.target.value }))}
-                placeholder="2025-W01"
-              />
+                                 onChange={(e) => {
+                   const semana = e.target.value
+                   console.log("📅 Semana seleccionada:", semana)
+                   setNuevoPagoSalario(prev => ({ ...prev, semana_pago: semana }))
+                   // Cargar comisiones si es quincena y hay mecánico seleccionado
+                   if (nuevoPagoSalario.id_mecanico && semana) {
+                     console.log("🚀 Llamando cargarComisionesQuincena desde onChange de la semana")
+                     console.log("🚀 Parámetros:", { mecanicoId: nuevoPagoSalario.id_mecanico, semana })
+                     cargarComisionesQuincena(nuevoPagoSalario.id_mecanico, semana, nuevoPagoSalario.fecha_pago, nuevoPagoSalario.monto_salario)
+                   }
+                 }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Seleccionar semana</option>
+                <option value="1">Semana 1</option>
+                <option value="2">Semana 2 (Quincena 1 - Días 1-15)</option>
+                <option value="3">Semana 3</option>
+                <option value="4">Semana 4 (Quincena 2 - Días 16-31)</option>
+              </select>
             </div>
+            
             <div>
               <Label htmlFor="fecha_pago">Fecha del Pago</Label>
-              <Input
-                id="fecha_pago"
-                type="date"
-                value={nuevoPagoSalario.fecha_pago}
-                onChange={(e) => setNuevoPagoSalario(prev => ({ ...prev, fecha_pago: e.target.value }))}
-              />
+                             <Input
+                 id="fecha_pago"
+                 type="date"
+                 value={nuevoPagoSalario.fecha_pago}
+                 onChange={(e) => {
+                   const nuevaFecha = e.target.value
+                   console.log("📅 Fecha cambiada:", nuevaFecha)
+                   setNuevoPagoSalario(prev => ({ ...prev, fecha_pago: nuevaFecha }))
+                 }}
+               />
             </div>
+
+            {/* Sección de Comisiones por Quincena */}
+            {nuevoPagoSalario.id_mecanico && esQuincena(nuevoPagoSalario.semana_pago) && (
+              <div className="border-t pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5 text-green-600" />
+                    <Label className="text-green-700 font-semibold">Comisiones por Quincena</Label>
+                  </div>
+                  
+                  {/* Botón de debug para probar la API */}
+                                     <Button
+                     variant="outline"
+                     size="sm"
+                     onClick={() => {
+                       console.log("🧪 Botón de debug presionado")
+                       console.log("🧪 Estado actual:", {
+                         id_mecanico: nuevoPagoSalario.id_mecanico,
+                         semana_pago: nuevoPagoSalario.semana_pago,
+                         fecha_pago: nuevoPagoSalario.fecha_pago
+                       })
+                       if (nuevoPagoSalario.id_mecanico && nuevoPagoSalario.semana_pago) {
+                         console.log("🧪 Llamando cargarComisionesQuincena desde botón Recargar")
+                         cargarComisionesQuincena(nuevoPagoSalario.id_mecanico, nuevoPagoSalario.semana_pago, nuevoPagoSalario.fecha_pago, nuevoPagoSalario.monto_salario)
+                       } else {
+                         console.log("🧪 No se puede cargar - faltan datos:", {
+                           tieneMecanico: !!nuevoPagoSalario.id_mecanico,
+                           tieneSemana: !!nuevoPagoSalario.semana_pago
+                         })
+                       }
+                     }}
+                     className="text-xs h-6 px-2"
+                   >
+                     🔄 Recargar
+                   </Button>
+                </div>
+                
+                {loadingComisiones ? (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <LoadingSpinner size="sm" />
+                    Calculando comisiones...
+                  </div>
+                ) : comisionesQuincena.length > 0 ? (
+                  <div className="space-y-3">
+                    {/* Resumen de comisiones */}
+                    <div className="bg-blue-50 p-3 rounded-lg">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-blue-700">Total Comisiones de la Quincena:</span>
+                        <span className="font-semibold text-blue-800">
+                          ₡{comisionesQuincena
+                            .reduce((sum, comision) => sum + (Number(comision.monto_comision) || 0), 0)
+                            .toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="text-xs text-blue-600 mt-1">
+                        {comisionesQuincena.length} comisiones generadas
+                      </div>
+                    </div>
+
+                    {/* Botones de aprobación/denegación */}
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => aprobarDenegarComisionesQuincena(true)}
+                        disabled={loadingEstadoQuincena || estadoQuincena?.estado === "APROBADA"}
+                        className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-400"
+                      >
+                        {loadingEstadoQuincena ? (
+                          <LoadingSpinner size="sm" />
+                        ) : (
+                          "✅ Aprobar Comisiones"
+                        )}
+                      </Button>
+                      <Button
+                        onClick={() => aprobarDenegarComisionesQuincena(false)}
+                        disabled={loadingEstadoQuincena || estadoQuincena?.estado === "DENEGADA"}
+                        variant="destructive"
+                        className="flex-1"
+                      >
+                        {loadingEstadoQuincena ? (
+                          <LoadingSpinner size="sm" />
+                        ) : (
+                          "❌ Denegar Comisiones"
+                        )}
+                      </Button>
+                    </div>
+
+                    {/* Estado actual */}
+                    {estadoQuincena && (
+                      <div className={`p-2 rounded-lg text-sm text-center ${
+                        estadoQuincena.estado === "APROBADA" 
+                          ? "bg-green-100 text-green-800" 
+                          : "bg-red-100 text-red-800"
+                      }`}>
+                        <strong>Estado:</strong> {estadoQuincena.estado === "APROBADA" ? "APROBADA" : "DENEGADA"}
+                        {estadoQuincena.estado === "DENEGADA" && " - Las comisiones han sido eliminadas"}
+                      </div>
+                    )}
+
+                    {/* Lista de comisiones (solo para visualización) */}
+                    <div className="max-h-32 overflow-y-auto space-y-1">
+                      {comisionesQuincena.map((comision) => (
+                        <div key={comision.id} className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded">
+                          <div className="flex-1">
+                            <div className="text-gray-600">
+                              {new Date(comision.fecha_comision).toLocaleDateString()}
+                            </div>
+                            <div className="text-gray-500 text-xs truncate max-w-32">
+                              {comision.descripcion_trabajo}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-medium text-gray-700">
+                              ₡{Number(comision.monto_comision).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
+                      No hay comisiones pendientes para esta quincena
+                    </div>
+                    
+                    {/* Información de debug */}
+                    <div className="text-xs text-gray-400 bg-gray-100 p-2 rounded border">
+                      <div><strong>Debug Info:</strong></div>
+                      <div>Mecánico ID: {nuevoPagoSalario.id_mecanico}</div>
+                      <div>Semana: {nuevoPagoSalario.semana_pago}</div>
+                      <div>Fecha del Pago: {nuevoPagoSalario.fecha_pago}</div>
+                      <div>Mes del Pago: {new Date(nuevoPagoSalario.fecha_pago).getMonth()} ({new Date(nuevoPagoSalario.fecha_pago).toLocaleDateString('es-CR', { month: 'long' })})</div>
+                      <div>Año del Pago: {new Date(nuevoPagoSalario.fecha_pago).getFullYear()}</div>
+                      <div>¿Es quincena?: {esQuincena(nuevoPagoSalario.semana_pago) ? 'Sí' : 'No'}</div>
+                      <div>Estado loading: {loadingComisiones ? 'Sí' : 'No'}</div>
+                    </div>
+                  </div>
+                )}
+                
+                                 {/* Total del Pago (Salario + Comisiones Aprobadas) */}
+                 <div className="border-t pt-3">
+                   <div className="flex justify-between items-center text-lg font-semibold text-blue-700 bg-blue-50 p-3 rounded-lg">
+                     <span>Total a Pagar:</span>
+                     <span>₡{totalPagoConComision.toLocaleString()}</span>
+                   </div>
+                                       <div className="text-xs text-gray-500 mt-1">
+                      Salario Base: ₡{nuevoPagoSalario.monto_salario.toLocaleString()} + 
+                      Comisiones Aprobadas: ₡{(totalPagoConComision - nuevoPagoSalario.monto_salario).toLocaleString()}
+                    </div>
+                    <div className="text-xs text-green-600 mt-1 font-medium">
+                      💡 El monto total se guardará en la base de datos
+                    </div>
+                                        <div className="text-xs text-amber-600 mt-1">
+                       Comisiones Denegadas: ₡{estadoQuincena?.estado === "DENEGADA" ? estadoQuincena.totalComisiones : 0}
+                     </div>
+                 </div>
+              </div>
+            )}
           </div>
+          
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPagoSalariosDialogOpen(false)}>
+            <Button variant="outline" onClick={() => {
+              setIsPagoSalariosDialogOpen(false)
+              // Limpiar estados de comisiones
+              setComisionesQuincena([])
+              setTotalPagoConComision(0)
+            }}>
               Cancelar
             </Button>
             <Button onClick={handlePagoSalarios}>

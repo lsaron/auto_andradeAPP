@@ -8,6 +8,8 @@ from .mecanicos import Mecanico
 from .trabajos_mecanicos import TrabajoMecanico
 from .comisiones_mecanicos import ComisionMecanico
 from .admin_taller import AdminTaller
+from .gastos_taller import GastoTaller
+from .pagos_salarios import PagoSalario
 
 
 def obtener_cliente_por_id(db: Session, id_cliente: str):

@@ -485,3 +485,26 @@ def obtener_comisiones_quincena_mecanico(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{mecanico_id}/comisiones/quincena/{quincena}/estado")
+def aprobar_denegar_comisiones_quincena(
+    mecanico_id: int,
+    quincena: str,
+    aprobar: bool = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """
+    Aprueba o deniega todas las comisiones de un mecánico para una quincena específica.
+    Si se deniegan, se eliminan todas las comisiones de la base de datos.
+    """
+    try:
+        service = MecanicoService(db)
+        resultado = service.aprobar_denegar_comisiones_quincena(mecanico_id, quincena, aprobar)
+        
+        if "error" in resultado:
+            raise HTTPException(status_code=400, detail=resultado["error"])
+        
+        return resultado
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

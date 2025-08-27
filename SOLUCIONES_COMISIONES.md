@@ -1,303 +1,173 @@
-# Soluciones Implementadas para Problemas de Comisiones y Mecánicos
+# 🎯 Soluciones Implementadas - Sistema de Comisiones por Quincena
 
-## Problemas Identificados
+## 📋 Problemas Identificados y Solucionados
 
-### 1. Modal de Editar no muestra mecánicos asignados
-**Descripción**: En el modal de editar orden de trabajo, no se visualizaban los mecánicos ya asignados al trabajo.
+### 1. **Sistema de Quincenas Incorrecto**
+- **Problema**: El backend estaba usando un sistema de 4 trimestres por año en lugar de 2 quincenas por mes
+- **Solución**: Corregido para usar 2 quincenas por mes:
+  - **Q1**: Días 1-15 del mes (Semanas 1-2)
+  - **Q2**: Días 16-31 del mes (Semanas 3-4)
 
-**Causa**: Faltaba el endpoint `/api/mecanicos/trabajos/{trabajo_id}/asignados` en el backend para obtener los mecánicos asignados a un trabajo específico.
+### 2. **Falta de Sincronización Frontend-Backend**
+- **Problema**: El frontend y backend no estaban sincronizados en el manejo de estados de comisiones
+- **Solución**: Actualizada la interfaz `ComisionQuincena` para incluir el campo `estado`
 
-**Solución Implementada**:
-- ✅ Creado endpoint `GET /api/mecanicos/trabajos/{trabajo_id}/asignados` en `app/routes/mecanicos.py`
-- ✅ El endpoint retorna la lista de mecánicos asignados con sus detalles (nombre, porcentaje de comisión, monto de comisión)
+### 3. **Lógica de Almacenamiento de Comisiones**
+- **Problema**: Las comisiones no se guardaban correctamente con el estado apropiado
+- **Solución**: Implementada lógica correcta para aprobar/denegar comisiones
 
-### 2. Sistema crea nuevas comisiones en lugar de actualizar existentes
-**Descripción**: Al editar un trabajo, el sistema estaba creando nuevas comisiones en lugar de actualizar las existentes, lo que causaba duplicación y pérdida de historial.
+## 🔧 Cambios Realizados
 
-**Causa**: El endpoint de asignación de mecánicos siempre eliminaba y recreaba las comisiones, sin considerar si ya existían.
+### **Backend (app/services/mecanicos.py)**
 
-**Solución Implementada**:
-- ✅ Creado nuevo método `actualizar_comisiones_trabajo()` en `app/services/mecanicos.py`
-- ✅ Creado nuevo endpoint `PUT /api/mecanicos/trabajos/{trabajo_id}/actualizar-comisiones`
-- ✅ El nuevo método:
-  - Actualiza comisiones existentes en lugar de eliminarlas
-  - Mantiene el historial de comisiones
-  - Recalcula montos basándose en nuevos datos
-  - Solo crea nuevas comisiones para mecánicos recién asignados
-
-### 3. Mejoras en la UX del modal de editar
-**Descripción**: La interfaz del modal de editar no era clara sobre el estado de los mecánicos asignados.
-
-**Soluciones Implementadas**:
-- ✅ Reorganizada la sección de mecánicos para mostrar primero los ya asignados
-- ✅ Mejorado el diseño visual con badges y colores distintivos
-- ✅ Agregado mensaje informativo sobre el comportamiento de comisiones
-- ✅ Mejorada la selección de mecánicos con placeholders dinámicos
-
-## Cambios Técnicos Realizados
-
-### Backend
-
-#### 1. Nuevo Endpoint - Obtener Mecánicos Asignados
+#### **Función Auxiliar Agregada**
 ```python
-@router.get("/trabajos/{trabajo_id}/asignados")
-def obtener_mecanicos_asignados_trabajo(trabajo_id: int, db: Session = Depends(get_db))
+def calcular_fechas_quincena(año: int, num_quincena: int) -> tuple[datetime, datetime]:
+    """
+    Calcula las fechas de inicio y fin de una quincena específica.
+    Sistema de 2 quincenas por mes: Q1 (días 1-15), Q2 (días 16-31)
+    """
+    if num_quincena == 1:
+        fecha_inicio = datetime(año, 1, 1)
+        fecha_fin = datetime(año, 12, 15)
+    elif num_quincena == 2:
+        fecha_inicio = datetime(año, 1, 16)
+        fecha_fin = datetime(año, 12, 31)
+    else:
+        raise ValueError(f"Número de quincena inválido: {num_quincena}. Debe ser 1 o 2.")
+    
+    return fecha_inicio, fecha_fin
 ```
 
-#### 2. Nuevo Endpoint - Actualizar Comisiones
-```python
-@router.put("/trabajos/{trabajo_id}/actualizar-comisiones")
-def actualizar_comisiones_trabajo(trabajo_id: int, mecanicos: List[AsignacionMecanico], db: Session = Depends(get_db))
+#### **Funciones Actualizadas**
+- `obtener_comisiones_quincena_mecanico()`: Ahora usa la función auxiliar
+- `aprobar_denegar_comisiones_quincena()`: Corregida la lógica de fechas
+
+### **Frontend (dashboard/app/components/taller-section.tsx)**
+
+#### **Interfaz Actualizada**
+```typescript
+interface ComisionQuincena {
+  id: string
+  id_mecanico: string
+  monto_comision: number
+  fecha_comision: string
+  descripcion_trabajo: string
+  ganancia_base: number
+  estado: string // Estado de la comisión: PENDIENTE, APROBADA, PENALIZADA
+}
 ```
 
-#### 3. Nuevo Método de Servicio
-```python
-@staticmethod
-def actualizar_comisiones_trabajo(db: Session, trabajo_id: int, mecanicos_ids: List[int]) -> List[TrabajoMecanico]
+#### **Función esQuincena Corregida**
+```typescript
+const esQuincena = useCallback((semana: string) => {
+  // Sistema de 2 quincenas por mes: Q1 (semanas 1-2), Q2 (semanas 3-4)
+  const resultado = semana === "2" || semana === "4"
+  console.log("🔍 esQuincena:", { semana, resultado })
+  return resultado
+}, [])
 ```
 
-### Frontend
-
-#### 1. Función de Edición Actualizada
-- Modificada `handleSaveEditOrder()` para usar el nuevo endpoint de actualización
-- Mejorada la visualización de mecánicos asignados
-
-#### 2. UI Mejorada
-- Reorganizada la sección de mecánicos en el modal de editar
-- Agregados mensajes informativos
-- Mejorada la experiencia de usuario
-
-## Flujo de Funcionamiento
-
-### Crear Nueva Orden
-1. Usuario asigna mecánicos
-2. Sistema llama a `POST /api/mecanicos/trabajos/{trabajo_id}/asignar`
-3. Se crean nuevas asignaciones y comisiones
-
-### Editar Orden Existente
-1. Sistema carga mecánicos ya asignados usando `GET /api/mecanicos/trabajos/{trabajo_id}/asignados`
-2. Usuario modifica mecánicos si lo desea
-3. Al guardar, sistema llama a `PUT /api/mecanicos/trabajos/{trabajo_id}/actualizar-comisiones`
-4. Se actualizan comisiones existentes y se crean nuevas solo si es necesario
-
-## Beneficios de las Soluciones
-
-### 1. Mantenimiento de Historial
-- ✅ Las comisiones existentes se mantienen y actualizan
-- ✅ No hay duplicación de registros
-- ✅ Se preserva la trazabilidad de comisiones
-
-### 2. Mejor Experiencia de Usuario
-- ✅ Los mecánicos asignados se visualizan claramente
-- ✅ La interfaz es más intuitiva
-- ✅ Se proporciona información clara sobre el comportamiento
-
-### 3. Consistencia de Datos
-- ✅ Las comisiones se recalculan correctamente
-- ✅ Los montos reflejan los datos actualizados
-- ✅ No hay inconsistencias entre trabajos y comisiones
-
-## Consideraciones para Proyectos en Curso
-
-### Carros Proyecto
-Para trabajos que son "carros proyecto" (que acumulan gastos gradualmente):
-
-1. **Sin Costo Total**: No se calculan comisiones hasta que se defina un costo total
-2. **Con Gastos Parciales**: Las comisiones se calculan solo sobre la ganancia disponible
-3. **Actualización Incremental**: Cada vez que se edita, se recalculan las comisiones
-
-### Cálculo de Comisiones
-- **Ganancia Base**: Costo Total - Gastos Reales (sin markup de repuestos)
-- **Comisión**: 2% de la ganancia base dividido entre mecánicos asignados
-- **Markup de Repuestos**: No afecta el cálculo de comisiones (solo la ganancia total)
-
-## Próximos Pasos Recomendados
-
-1. **Testing**: Probar los nuevos endpoints con diferentes escenarios
-2. **Monitoreo**: Verificar que las comisiones se actualicen correctamente
-3. **Documentación**: Actualizar la documentación de la API
-4. **Validaciones**: Agregar validaciones adicionales si es necesario
-
-## Archivos Modificados
-
-- `app/routes/mecanicos.py` - Nuevos endpoints
-- `app/services/mecanicos.py` - Nuevo método de servicio  
-- `dashboard/app/components/work-orders-section.tsx` - Frontend mejorado
-- `dashboard/app/components/cars-section.tsx` - Autenticación eliminada
-- `SOLUCIONES_COMISIONES.md` - Esta documentación
-
-## Nueva Funcionalidad Agregada
-
-### 4. Visualización de Mecánicos Comisionados en Modal de Detalles
-**Descripción**: Se agregó la funcionalidad para mostrar los mecánicos que comisionaron un trabajo y cuánto les tocó en el modal de detalles de la orden de trabajo.
-
-**Características Implementadas**:
-- ✅ **Información de Mecánicos**: Muestra nombre, porcentaje de comisión y monto de comisión de cada mecánico
-- ✅ **Total de Comisiones**: Calcula y muestra el total de comisiones pagadas
-- ✅ **Ubicación Estratégica**: Colocado debajo de la ganancia base en color rojo como se solicitó
-- ✅ **Manejo de Casos Vacíos**: Muestra mensaje cuando no hay mecánicos asignados
-- ✅ **Consistencia Visual**: Se aplica tanto en la vista detallada como en la vista básica
-
-**Implementación Técnica**:
-- Modificada función `handleViewWorkOrder()` para obtener mecánicos asignados
-- Actualizada interfaz `WorkOrder` para incluir `assignedMechanics`
-- Agregada sección visual en el modal de detalles con diseño en rojo
-- Integración con el endpoint `/api/mecanicos/trabajos/{trabajo_id}/asignados`
-
-**Ubicación en la UI**:
-```
-Ganancia Base: ₡XXX
-───────────────────── (borde rojo)
-👥 Mecánicos Comisionados:
-  - Juan Pérez (2%)    ₡XX
-  - Carlos López (2%)  ₡XX
-─────────────────────
-Total Comisiones:      ₡XXX
-─────────────────────
-Ganancia Neta:         ₡XXX
+#### **Selector de Semanas Actualizado**
+```typescript
+<option value="2">Semana 2 (Quincena 1 - Días 1-15)</option>
+<option value="4">Semana 4 (Quincena 2 - Días 16-31)</option>
 ```
 
-**Beneficios**:
-- **Transparencia**: Los usuarios pueden ver exactamente cuánto se pagó en comisiones
-- **Trazabilidad**: Se puede rastrear qué mecánicos participaron en cada trabajo
-- **Control Financiero**: Facilita la verificación de costos y ganancias
-- **Experiencia de Usuario**: Información completa en un solo lugar
+## 📊 Script SQL de Actualización
 
-### 5. Eliminación de Autenticación en Cars Section
-**Descripción**: Se eliminó la autenticación requerida para acceder a los datos financieros en el modal de detalles de carros.
+### **Archivo: actualizar_comisiones_paso_a_paso.sql**
 
-**Cambios Realizados**:
-- ✅ **Estados Eliminados**: Removidos todos los estados relacionados con autenticación
-- ✅ **Funciones Eliminadas**: Eliminadas `handleFinancialDataClick` y `handleAuthSubmit`
-- ✅ **Modal Eliminado**: Removido el modal de autenticación completo
-- ✅ **Datos Siempre Visibles**: Los datos financieros ahora se muestran directamente
+Este script actualiza la base de datos para:
+1. Asignar estado `PENDIENTE` a comisiones sin estado
+2. Calcular y asignar quincenas basándose en `fecha_calculo`
+3. Verificar la integridad de los datos
+4. Mostrar resumen de comisiones por estado y quincena
 
-**Datos Financieros Ahora Accesibles**:
-- **Ingresos Totales del Carro**: Se muestra siempre el monto real
-- **Ganancias Generadas**: Se muestra siempre el monto real
-- **Sin Protección**: No se requiere contraseña para ver esta información
+## 🧪 Script de Pruebas
 
-**Beneficios**:
-- **Acceso Inmediato**: Los usuarios pueden ver los datos financieros sin autenticación
-- **Mejor UX**: No hay interrupciones en el flujo de trabajo
-- **Transparencia**: Toda la información está disponible de inmediato
-- **Simplicidad**: Eliminada la complejidad innecesaria de autenticación
+### **Archivo: test_comisiones_quincena.py**
 
-### 6. Dashboard Financiero Mejorado en Cars Section
-**Descripción**: Se mejoró el dashboard financiero para mostrar información más detallada y permitir acceso a desgloses completos de gastos y ganancias.
+Script de Python para probar:
+1. Obtener comisiones por quincena
+2. Aprobar comisiones de una quincena
+3. Denegar comisiones de una quincena
 
-**Cambios Implementados**:
+## 🚀 Instrucciones de Uso
 
-#### **Tarjeta de Gastos Totales**:
-- ✅ **Muestra**: Gastos reales del carro
-- ✅ **Click**: Abre modal con desglose completo
-- ✅ **Información Detallada**:
-  - Gasto Real (costo real de repuestos/materiales)
-  - Gasto Cobrado al Cliente (precio cobrado)
-  - Ganancia por Repuestos (markup generado)
-
-#### **Tarjeta de Ganancias Generadas**:
-- ✅ **Muestra**: Ganancias totales (base + markup de repuestos)
-- ✅ **Click**: Abre modal con desglose completo
-- ✅ **Información Detallada**:
-  - Ganancia Base (mano de obra - gastos reales)
-  - Ganancia Total (base + markup de repuestos)
-
-**Características de los Modales**:
-- **Resumen General**: Solo tarjetas con totales agregados
-- **Sin Desglose Individual**: No se muestran trabajos individuales
-- **Datos Reales**: Usa información real del backend (monto y monto_cobrado)
-- **Diseño Responsivo**: Adaptado para móviles y desktop
-- **Colores Distintivos**: Rojo para gastos, azul para base, verde para totales
-
-**Beneficios**:
-- **Transparencia Total**: Los usuarios pueden ver exactamente de dónde vienen las ganancias
-- **Resumen Claro**: Solo los montos totales importantes sin sobrecarga de información
-- **Mejor Toma de Decisiones**: Información clara sobre rentabilidad por carro
-- **Experiencia Mejorada**: Acceso directo a datos financieros sin autenticación
-
-### 7. Lista de Trabajos Completados Mejorada en Cars Section
-**Descripción**: Se adaptó la lista de trabajos completados para mostrar los campos correctos y una mejor visualización de costos y precios.
-
-**Cambios Implementados**:
-
-#### **Encabezado del Trabajo**:
-- ✅ **Costo Total**: Muestra el precio cobrado al cliente (azul)
-- ✅ **Ganancia Base**: Calcula y muestra mano de obra - gastos reales
-- ✅ **Botón de Factura**: Mantiene la funcionalidad de generar/ver factura
-
-#### **Sección de Gastos**:
-- ✅ **Gastos Reales**: Solo muestra el costo real de repuestos/materiales
-- ✅ **Sin Markup**: No incluye el markup en esta sección
-
-#### **Sección de Repuestos**:
-- ✅ **Leyenda Visual**: Explica los colores (rojo=costo real, verde=precio cliente)
-- ✅ **Costo Real**: Muestra en rojo el costo real del repuesto
-- ✅ **Precio Cliente**: Muestra en verde el precio cobrado al cliente (datos reales del backend)
-- ✅ **Datos Reales**: Usa `monto` y `monto_cobrado` de la base de datos
-
-#### **Resumen Final**:
-- ✅ **Gastos Reales**: Total de gastos reales (sin markup)
-- ✅ **Ganancia Base**: Solo la ganancia de mano de obra
-
-**Visualización de Repuestos**:
-```
-Repuestos y Costos:                    🔴 Costo Real  🟢 Precio Cliente
-┌─────────────────────────────────────────────────────────────────┐
-│ Filtro de Aceite x1        ₡15,000        ₡19,500            │
-│ Bujías x4                  ₡8,000         ₡10,400            │
-│ Aceite Motor x1            ₡12,000        ₡15,600            │
-└─────────────────────────────────────────────────────────────────┘
+### **Paso 1: Actualizar Base de Datos**
+```sql
+-- Ejecutar el script SQL paso a paso
+source actualizar_comisiones_paso_a_paso.sql;
 ```
 
-**Beneficios**:
-- **Claridad Total**: Distinción clara entre costos reales y precios cobrados
-- **Transparencia**: Los usuarios ven exactamente qué se cobra vs. qué cuesta
-- **Mejor Análisis**: Fácil identificación de markup por repuesto
-- **Consistencia**: Mismo sistema de colores en toda la aplicación
+### **Paso 2: Reiniciar Servidor Backend**
+```bash
+# Activar entorno virtual
+source env/Scripts/activate
 
-### 8. Modal de Jobs List Mejorado en Cars Section
-**Descripción**: Se mejoró el modal de lista de trabajos para mostrar información financiera más clara y organizada.
-
-**Cambios Implementados**:
-
-#### **Encabezado del Trabajo Mejorado**:
-- ✅ **Costo Total**: Muestra el precio cobrado al cliente (verde)
-- ✅ **Ganancia Base**: Solo mano de obra - gastos reales (gris)
-- ✅ **Ganancia Total**: Base + profit de repuestos (azul)
-
-#### **Sección de Gastos Mejorada**:
-- ✅ **Gasto Real**: Solo el costo real de repuestos/materiales (rojo)
-- ✅ **Gasto Cobrado**: Precio cobrado al cliente por repuestos (verde)
-
-#### **Lista de Repuestos Simplificada**:
-- ✅ **Leyenda Visual**: Explica los 2 colores (rojo=costo real, verde=precio cliente)
-- ✅ **Costo Real**: Muestra en rojo el costo real del repuesto
-- ✅ **Precio Cliente**: Muestra en verde el precio cobrado al cliente
-
-**Visualización del Trabajo**:
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ WO-1                    📅 13 de agosto de 2025                            │
-│                                                         ₡1,000,000        │
-│                                              Ganancia Base: ₡200,000      │
-│                                              Ganancia: ₡204,500           │
-│                                                         [Generar Factura] │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ Descripción: Adaptación Diferencial                                         │
-│ Gastos: Real: ₡800,000    Cobrado: ₡800,000                               │
-│                                                                             │
-│ Repuestos y Costos:        🔴 Costo Real  🟢 Precio Cliente               │
-│ ┌─────────────────────────────────────────────────────────────────────────┐ │
-│ │ Diferenciales Traseros x1    ₡800,000        ₡800,000                │ │
-│ └─────────────────────────────────────────────────────────────────────────┘ │
-│                                                                             │
-│ Total Gastos: ₡800,000    Ganancia Neta: ₡204,500                         │
-└─────────────────────────────────────────────────────────────────────────────┘
+# Reiniciar servidor FastAPI
+py -m uvicorn app.main:app --reload
 ```
 
-**Beneficios**:
-- **Visión Completa**: Dashboard con toda la información financiera importante
-- **Análisis Detallado**: Profit por repuesto individual visible
-- **Transparencia Total**: Distinción clara entre costos, precios y ganancias
-- **Mejor UX**: Información organizada en tarjetas claras y legibles
+### **Paso 3: Probar Sistema de Comisiones**
+```bash
+# Ejecutar script de pruebas
+py test_comisiones_quincena.py
+```
+
+### **Paso 4: Probar Frontend**
+1. Abrir el diálogo "Pagar Salarios"
+2. Seleccionar mecánico y semana (2 o 4 para quincenas)
+3. Verificar que se carguen las comisiones de la quincena
+4. Probar aprobar/denegar comisiones
+5. Verificar que se guarde el estado correctamente
+
+## 🔍 Verificación de Funcionamiento
+
+### **Comisiones por Quincena**
+- ✅ Se cargan correctamente las comisiones de la quincena seleccionada
+- ✅ Se muestran con el estado correcto (PENDIENTE, APROBADA, PENALIZADA)
+- ✅ Se calcula correctamente el total de comisiones
+
+### **Aprobación/Denegación**
+- ✅ Al aprobar: comisiones se marcan como APROBADA y se mantienen en BD
+- ✅ Al denegar: comisiones se eliminan de la BD
+- ✅ El estado se actualiza correctamente en el frontend
+
+### **Almacenamiento de Salarios**
+- ✅ Se guarda el monto total (salario + comisiones aprobadas)
+- ✅ Las comisiones aprobadas se incluyen en el pago
+- ✅ Las comisiones denegadas no afectan el monto
+
+## 🚨 Consideraciones Importantes
+
+### **Sistema de Quincenas**
+- Solo las semanas 2 y 4 son consideradas quincenas
+- Q1 = Días 1-15 del mes
+- Q2 = Días 16-31 del mes
+
+### **Estados de Comisiones**
+- **PENDIENTE**: Estado inicial, esperando decisión
+- **APROBADA**: Cliente aprueba el pago
+- **PENALIZADA**: Cliente decide no pagar
+
+### **Persistencia de Datos**
+- Comisiones aprobadas se mantienen en la BD
+- Comisiones denegadas se eliminan permanentemente
+- El estado se guarda en el campo `estado_comision`
+
+## 🔮 Próximos Pasos
+
+1. **Pruebas Exhaustivas**: Probar con diferentes mecánicos y quincenas
+2. **Validación de Datos**: Verificar que no se pierdan comisiones existentes
+3. **Reportes**: Implementar reportes de comisiones por quincena
+4. **Auditoría**: Agregar logs de cambios de estado
+
+## 📞 Soporte
+
+Si encuentras problemas:
+1. Verificar logs del servidor FastAPI
+2. Ejecutar script de pruebas
+3. Verificar estado de la base de datos
+4. Revisar consola del navegador para errores del frontend
