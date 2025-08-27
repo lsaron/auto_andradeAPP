@@ -9,6 +9,7 @@ import { WorkOrdersSection } from "./components/work-orders-section"
 import { ClientsSection } from "./components/clients-section"
 import { ReportsSection } from "./components/reports-section"
 import { MechanicsSection } from "./components/mechanics-section"
+import { TallerSection } from "./components/taller-section"
 import { InitialLoader } from "./components/initial-loader"
 
 export default function Dashboard() {
@@ -36,6 +37,8 @@ export default function Dashboard() {
         return <ClientsSection />
       case "mechanics":
         return <MechanicsSection />
+      case "taller":
+        return <TallerSection />
       case "reports":
         return <ReportsSection />
       default:

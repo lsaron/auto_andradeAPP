@@ -1,6 +1,6 @@
 "use client"
 
-import { Car, Home, Users, Wrench, BarChart3, UserCog } from "lucide-react"
+import { Car, Home, Users, Wrench, BarChart3, UserCog, Building2 } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -38,6 +38,11 @@ const menuItems = [
     title: "Mecánicos",
     url: "mechanics",
     icon: UserCog,
+  },
+  {
+    title: "Taller",
+    url: "taller",
+    icon: Building2,
   },
   {
     title: "Reportes",

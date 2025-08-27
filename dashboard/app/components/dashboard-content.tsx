@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Car, ClipboardList, Users, Calendar, TrendingUp, TrendingDown } from "lucide-react"
+import { Car, ClipboardList, Users, Calendar, TrendingUp, TrendingDown, Building2 } from "lucide-react"
 
 interface DashboardStats {
   totalVehicles: number
@@ -358,6 +358,33 @@ export function DashboardContent() {
                 <p className="text-sm">No hay datos de vehículos disponibles</p>
               </div>
               )}
+          </CardContent>
+        </Card>
+
+        {/* Taller Overview Card */}
+        <Card className="w-full">
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-orange-600" />
+              Resumen del Taller
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-6 pt-0">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-3 bg-orange-50 rounded-lg">
+                <p className="text-2xl font-bold text-orange-600">₡0</p>
+                <p className="text-xs text-orange-700">Gastos del Mes</p>
+              </div>
+              <div className="text-center p-3 bg-green-50 rounded-lg">
+                <p className="text-2xl font-bold text-green-600">₡0</p>
+                <p className="text-xs text-green-700">Salarios del Mes</p>
+              </div>
+            </div>
+            <div className="mt-4 text-center">
+              <p className="text-sm text-muted-foreground">
+                Gestiona los gastos del taller y pagos de salarios
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>

@@ -1098,8 +1098,7 @@ export function MechanicsSection() {
                     </p>
                   </div>
                 </div>
-                
-                
+              
                 {/* Segunda fila con información adicional */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
                   <div>

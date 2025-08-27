@@ -101,6 +101,58 @@ export interface WorkOrderUpdate {
   parts?: string[]
   labor_hours?: number
 }
+
+// ========================================
+// TIPOS PARA LA PÁGINA DEL TALLER
+// ========================================
+
+export interface GastoTaller {
+  id: string
+  descripcion: string
+  monto: number
+  categoria: string
+  fecha_gasto: string
+  created_at: string
+  updated_at: string
+}
+
+export interface GastoTallerCreate {
+  descripcion: string
+  monto: number
+  categoria: string
+  fecha_gasto: string
+}
+
+export interface GastoTallerUpdate {
+  descripcion?: string
+  monto?: number
+  categoria?: string
+  fecha_gasto?: string
+}
+
+export interface PagoSalario {
+  id: string
+  id_mecanico: string
+  nombre_mecanico: string
+  monto_salario: number
+  semana_pago: string
+  fecha_pago: string
+  created_at: string
+}
+
+export interface PagoSalarioCreate {
+  id_mecanico: string
+  monto_salario: number
+  semana_pago: string
+  fecha_pago: string
+}
+
+export interface PagoSalarioUpdate {
+  id_mecanico?: string
+  monto_salario?: number
+  semana_pago?: string
+  fecha_pago?: string
+}
 export interface Mechanic {
   id: string
   name: string
