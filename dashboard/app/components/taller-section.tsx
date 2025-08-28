@@ -221,14 +221,19 @@ export function TallerSection() {
    // Log del estado inicial
    console.log("🚀 Estado inicial de nuevoPagoSalario:", nuevoPagoSalario)
 
-  // Nuevos estados para comisiones
+  // Estados para comisiones por quincena
   const [comisionesQuincena, setComisionesQuincena] = useState<ComisionQuincena[]>([])
   const [loadingComisiones, setLoadingComisiones] = useState(false)
-  const [totalPagoConComision, setTotalPagoConComision] = useState<number>(0)
-
-    // Nuevo estado para el estado de aprobación de la quincena
   const [estadoQuincena, setEstadoQuincena] = useState<EstadoQuincena | null>(null)
   const [loadingEstadoQuincena, setLoadingEstadoQuincena] = useState(false)
+  const [totalPagoConComision, setTotalPagoConComision] = useState(0)
+  
+  // Estado para popup de confirmación al denegar comisiones
+  const [showConfirmDenegar, setShowConfirmDenegar] = useState(false)
+  
+  // Estado para popup de alerta de pago duplicado
+  const [showPagoDuplicadoAlert, setShowPagoDuplicadoAlert] = useState(false)
+  const [pagoDuplicadoInfo, setPagoDuplicadoInfo] = useState<{mecanico: string, semana: string, fecha: string, monto: number} | null>(null)
 
      // Estados generales
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
@@ -485,6 +490,24 @@ export function TallerSection() {
     }
   }, [selectedYear, selectedMonth])
 
+  // Función para verificar si ya existe un pago para un mecánico en una quincena específica
+  const verificarPagoExistente = useCallback((mecanicoId: string, semana: string, fechaPago: string) => {
+    const fechaPagoObj = new Date(fechaPago)
+    const año = fechaPagoObj.getFullYear()
+    const mes = fechaPagoObj.getMonth()
+    
+    // Buscar si ya existe un pago para este mecánico en esta quincena del mismo mes y año
+    const pagoExistente = pagosSalarios.find(pago => {
+      const fechaPagoExistente = new Date(pago.fecha_pago)
+      return pago.id_mecanico === mecanicoId && 
+             pago.semana_pago === semana &&
+             fechaPagoExistente.getFullYear() === año &&
+             fechaPagoExistente.getMonth() === mes
+    })
+    
+    return pagoExistente
+  }, [pagosSalarios])
+
   // Función para cargar mecánicos
   const cargarMecanicos = useCallback(async () => {
     try {
@@ -723,7 +746,6 @@ export function TallerSection() {
 
   // Nueva función para verificar si es quincena (semana 2 o 4)
   const esQuincena = useCallback((semana: string) => {
-    // Sistema de 2 quincenas por mes: Q1 (semanas 1-2), Q2 (semanas 3-4)
     const resultado = semana === "2" || semana === "4"
     console.log("🔍 esQuincena:", { semana, resultado })
     return resultado
@@ -735,6 +757,33 @@ export function TallerSection() {
     
     if (!nuevoPagoSalario.id_mecanico || nuevoPagoSalario.monto_salario <= 0) {
       console.log("❌ handlePagoSalarios: Datos inválidos")
+      return
+    }
+
+    // Verificar si ya existe un pago para este mecánico en esta quincena
+    const pagoExistente = verificarPagoExistente(
+      nuevoPagoSalario.id_mecanico, 
+      nuevoPagoSalario.semana_pago, 
+      nuevoPagoSalario.fecha_pago
+    )
+    
+    if (pagoExistente) {
+      console.log("⚠️ Ya existe un pago para este mecánico en esta quincena:", pagoExistente)
+      
+      // Obtener el nombre del mecánico
+      const mecanico = mecanicos.find(m => m.id === pagoExistente.id_mecanico)
+      const nombreMecanico = mecanico ? mecanico.nombre : "Mecánico"
+      
+      // Configurar la información del pago duplicado para mostrar en el popup
+      setPagoDuplicadoInfo({
+        mecanico: nombreMecanico,
+        semana: pagoExistente.semana_pago,
+        fecha: pagoExistente.fecha_pago,
+        monto: pagoExistente.monto_salario
+      })
+      
+      // Mostrar el popup de alerta
+      setShowPagoDuplicadoAlert(true)
       return
     }
 
@@ -774,10 +823,10 @@ export function TallerSection() {
       }
       console.log("💵 Pago formateado:", pagoFormateado)
       
-             // Si es quincena y hay comisiones, marcar las comisiones como aprobadas
+             // Si es quincena y hay comisiones PENDIENTES, marcarlas como aprobadas en la BD
        if (esQuincena(nuevoPagoSalario.semana_pago) && comisionesQuincena.length > 0) {
          try {
-           console.log("💰 Procesando comisiones para el pago...")
+           console.log("💰 Procesando comisiones PENDIENTES para el pago...")
            
            // Marcar las comisiones como aprobadas en la base de datos
            const fechaPago = new Date(nuevoPagoSalario.fecha_pago)
@@ -794,12 +843,12 @@ export function TallerSection() {
            })
            
            if (responseComisiones.ok) {
-             console.log("✅ Comisiones marcadas como aprobadas exitosamente")
+             console.log("✅ Comisiones PENDIENTES marcadas como aprobadas exitosamente")
            } else {
              console.warn("⚠️ No se pudieron marcar las comisiones como aprobadas")
            }
            
-           console.log("💰 Comisiones incluidas en el pago:", {
+           console.log("💰 Comisiones PENDIENTES incluidas en el pago:", {
              mecanicoId: nuevoPagoSalario.id_mecanico,
              semana: nuevoPagoSalario.semana_pago,
              totalComisiones: totalPagoConComision - nuevoPagoSalario.monto_salario,
@@ -811,7 +860,7 @@ export function TallerSection() {
            // No fallar si hay error con las comisiones, solo loguear
          }
        } else {
-         console.log("💰 No hay comisiones para procesar:", {
+         console.log("💰 No hay comisiones PENDIENTES para procesar:", {
            esQuincena: esQuincena(nuevoPagoSalario.semana_pago),
            comisionesLength: comisionesQuincena.length
          })
@@ -829,7 +878,7 @@ export function TallerSection() {
       console.log("💵 Nuevo estado para nuevoPagoSalario:", nuevoEstado)
       setNuevoPagoSalario(nuevoEstado)
       
-             // Actualizar estado de comisiones como aprobadas
+             // Actualizar estado de comisiones como aprobadas (todas las PENDIENTES se aprueban automáticamente)
        if (esQuincena(nuevoPagoSalario.semana_pago) && comisionesQuincena.length > 0) {
          const fechaPago = new Date(nuevoPagoSalario.fecha_pago)
          const año = fechaPago.getFullYear()
@@ -863,9 +912,9 @@ export function TallerSection() {
     }
   }, [nuevoPagoSalario, esQuincena, comisionesQuincena, totalPagoConComision, obtenerSemanaActual])
 
-  // Nueva función para cargar comisiones por quincena
+  // Función para cargar comisiones por quincena (solo PENDIENTES)
   const cargarComisionesQuincena = useCallback(async (mecanicoId: string, semana: string, fechaPago: string, montoSalario: number) => {
-    console.log("🔍 Cargando comisiones para:", { mecanicoId, semana, fechaPago, montoSalario })
+    console.log("🔍 Cargando comisiones PENDIENTES para:", { mecanicoId, semana, fechaPago, montoSalario })
     
     if (!esQuincena(semana)) {
       console.log("❌ No es quincena, limpiando comisiones")
@@ -881,15 +930,14 @@ export function TallerSection() {
       const año = fechaPagoObj.getFullYear()
       const quincena = `${año}-Q${semana}`
       
-      console.log("💰 Obteniendo comisiones del mecánico para quincena:", quincena)
+      console.log("💰 Obteniendo comisiones PENDIENTES del mecánico para quincena:", quincena)
       
-      // Usar el endpoint correcto que obtiene comisiones por quincena
+      // Usar el endpoint que obtiene comisiones por quincena
       const url = buildApiUrl(`/mecanicos/${mecanicoId}/comisiones/quincena/${quincena}`)
       console.log("🌐 Llamando a la API:", url)
       
       const response = await fetch(url)
       console.log("📡 Status de la respuesta:", response.status)
-      console.log("📡 Headers de la respuesta:", response.headers)
       
       if (!response.ok) {
         const errorText = await response.text()
@@ -899,7 +947,6 @@ export function TallerSection() {
       
       const comisiones = await response.json()
       console.log("📊 Comisiones recibidas de la API:", comisiones)
-      console.log("📊 Total de comisiones recibidas:", comisiones.length)
       
       if (comisiones.length === 0) {
         console.log("⚠️ No hay comisiones para este mecánico en esta quincena")
@@ -916,26 +963,30 @@ export function TallerSection() {
         monto_comision: comision.monto_comision || 0,
         fecha_comision: comision.fecha_trabajo,
         descripcion_trabajo: comision.descripcion_trabajo,
-        ganancia_base: 0, // No necesitamos esto para comisiones existentes
-        estado: comision.estado_comision // Usar el estado real de la base de datos
+        ganancia_base: 0,
+        estado: comision.estado_comision
       }))
       
-      setComisionesQuincena(comisionesFormateadas)
+      // FILTRAR SOLO LAS COMISIONES PENDIENTES
+      const comisionesPendientes = comisionesFormateadas.filter(
+        (comision: ComisionQuincena) => comision.estado === 'PENDIENTE'
+      )
       
-      // Calcular total de comisiones (solo las que estén en estado PENDIENTE o APROBADA)
-      const totalComisiones = comisionesFormateadas
-        .filter((comision: ComisionQuincena) => comision.estado === 'PENDIENTE' || comision.estado === 'APROBADA')
-        .reduce((sum: number, comisionItem: ComisionQuincena) => {
-          return sum + (Number(comisionItem.monto_comision) || 0)
-        }, 0)
+      console.log("📊 Comisiones PENDIENTES filtradas:", comisionesPendientes)
+      setComisionesQuincena(comisionesPendientes)
       
-      console.log("💰 Total comisiones disponibles:", totalComisiones)
+      // Calcular total de comisiones PENDIENTES únicamente
+      const totalComisiones = comisionesPendientes.reduce((sum: number, comisionItem: ComisionQuincena) => {
+        return sum + (Number(comisionItem.monto_comision) || 0)
+      }, 0)
       
-      // Calcular total del pago (salario + comisiones disponibles)
+      console.log("💰 Total comisiones PENDIENTES:", totalComisiones)
+      
+      // Calcular total del pago (salario + comisiones PENDIENTES)
       const totalPago = montoSalario + totalComisiones
       setTotalPagoConComision(totalPago)
       
-      console.log("💵 Total pago con comisiones:", totalPago)
+      console.log("💵 Total pago con comisiones PENDIENTES:", totalPago)
       
     } catch (error) {
       console.error("❌ Error al cargar comisiones por quincena:", error)
@@ -963,14 +1014,14 @@ export function TallerSection() {
 
     try {
       setLoadingEstadoQuincena(true)
-      console.log("🔄 Aprobando/Denegando comisiones de quincena:", { aprobar })
+      console.log("🔄 Aprobando/Denegando comisiones PENDIENTES de quincena:", { aprobar })
 
       // Construir la quincena en formato YYYY-Q1, YYYY-Q2, etc.
       const fechaPago = new Date(nuevoPagoSalario.fecha_pago)
       const año = fechaPago.getFullYear()
       const quincena = `${año}-Q${nuevoPagoSalario.semana_pago}`
 
-             const response = await fetch(`${buildApiUrl('/mecanicos')}/${nuevoPagoSalario.id_mecanico}/comisiones/quincena/${quincena}/estado`, {
+      const response = await fetch(`${buildApiUrl('/mecanicos')}/${nuevoPagoSalario.id_mecanico}/comisiones/quincena/${quincena}/estado`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -987,7 +1038,7 @@ export function TallerSection() {
       console.log("✅ Resultado de aprobación/denegación:", resultado)
 
       if (aprobar) {
-        // Si se aprueban, mantener las comisiones y calcular el total
+        // Si se aprueban, mantener las comisiones PENDIENTES y calcular el total
         const totalComisiones = comisionesQuincena.reduce((sum, comision) => sum + (Number(comision.monto_comision) || 0), 0)
         setTotalPagoConComision(nuevoPagoSalario.monto_salario + totalComisiones)
         setEstadoQuincena({
@@ -997,7 +1048,7 @@ export function TallerSection() {
           totalComisiones
         })
       } else {
-        // Si se deniegan, limpiar comisiones y recalcular total
+        // Si se deniegan, limpiar comisiones y recalcular total (solo salario base)
         setComisionesQuincena([])
         setTotalPagoConComision(nuevoPagoSalario.monto_salario)
         setEstadoQuincena({
@@ -1585,7 +1636,7 @@ export function TallerSection() {
 
       {/* Dialog para pagar salarios */}
       <Dialog open={isPagoSalariosDialogOpen} onOpenChange={setIsPagoSalariosDialogOpen}>
-        <DialogContent className="bg-white max-w-lg">
+        <DialogContent className="bg-white max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Pagar Salarios</DialogTitle>
             <DialogDescription>
@@ -1629,16 +1680,17 @@ export function TallerSection() {
                 onChange={(e) => {
                   const monto = parseFloat(e.target.value) || 0
                   setNuevoPagoSalario(prev => ({ ...prev, monto_salario: monto }))
-                                     // Recalcular total con comisiones (si están aprobadas)
-                   if (comisionesQuincena.length > 0 && estadoQuincena?.estado === "APROBADA") {
-                     const totalComisiones = comisionesQuincena
-                       .reduce((sum, comision: ComisionQuincena) => {
-                         return sum + (Number(comision.monto_comision) || 0)
-                       }, 0)
-                     setTotalPagoConComision(monto + totalComisiones)
-                   } else {
-                     setTotalPagoConComision(monto)
-                   }
+                  
+                  // Recalcular total con comisiones PENDIENTES
+                  if (comisionesQuincena.length > 0) {
+                    const totalComisiones = comisionesQuincena
+                      .reduce((sum, comision: ComisionQuincena) => {
+                        return sum + (Number(comision.monto_comision) || 0)
+                      }, 0)
+                    setTotalPagoConComision(monto + totalComisiones)
+                  } else {
+                    setTotalPagoConComision(monto)
+                  }
                 }}
                 placeholder="0.00"
                 min="0"
@@ -1666,9 +1718,9 @@ export function TallerSection() {
               >
                 <option value="">Seleccionar semana</option>
                 <option value="1">Semana 1</option>
-                <option value="2">Semana 2 (Quincena 1 - Días 1-15)</option>
+                <option value="2">Semana 2 (Quincena 1)</option>
                 <option value="3">Semana 3</option>
-                <option value="4">Semana 4 (Quincena 2 - Días 16-31)</option>
+                <option value="4">Semana 4 (Quincena 2)</option>
               </select>
             </div>
             
@@ -1748,7 +1800,7 @@ export function TallerSection() {
                     <div className="flex gap-2">
                       <Button
                         onClick={() => aprobarDenegarComisionesQuincena(true)}
-                        disabled={loadingEstadoQuincena || estadoQuincena?.estado === "APROBADA"}
+                        disabled={loadingEstadoQuincena}
                         className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-400"
                       >
                         {loadingEstadoQuincena ? (
@@ -1758,8 +1810,8 @@ export function TallerSection() {
                         )}
                       </Button>
                       <Button
-                        onClick={() => aprobarDenegarComisionesQuincena(false)}
-                        disabled={loadingEstadoQuincena || estadoQuincena?.estado === "DENEGADA"}
+                        onClick={() => setShowConfirmDenegar(true)}
+                        disabled={loadingEstadoQuincena}
                         variant="destructive"
                         className="flex-1"
                       >
@@ -1779,7 +1831,14 @@ export function TallerSection() {
                           : "bg-red-100 text-red-800"
                       }`}>
                         <strong>Estado:</strong> {estadoQuincena.estado === "APROBADA" ? "APROBADA" : "DENEGADA"}
-                        {estadoQuincena.estado === "DENEGADA" && " - Las comisiones han sido eliminadas"}
+                        {estadoQuincena.estado === "DENEGADA" && (
+                          <div className="mt-2">
+                            <p>Las comisiones han sido eliminadas</p>
+                            <p className="text-xs text-blue-600 mt-1">
+                              💡 Puedes registrar el pago del salario base normalmente
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -1824,22 +1883,19 @@ export function TallerSection() {
                   </div>
                 )}
                 
-                                 {/* Total del Pago (Salario + Comisiones Aprobadas) */}
+                                 {/* Total del Pago (Salario + Comisiones PENDIENTES) */}
                  <div className="border-t pt-3">
                    <div className="flex justify-between items-center text-lg font-semibold text-blue-700 bg-blue-50 p-3 rounded-lg">
                      <span>Total a Pagar:</span>
                      <span>₡{totalPagoConComision.toLocaleString()}</span>
                    </div>
-                                       <div className="text-xs text-gray-500 mt-1">
-                      Salario Base: ₡{nuevoPagoSalario.monto_salario.toLocaleString()} + 
-                      Comisiones Aprobadas: ₡{(totalPagoConComision - nuevoPagoSalario.monto_salario).toLocaleString()}
-                    </div>
-                    <div className="text-xs text-green-600 mt-1 font-medium">
-                      💡 El monto total se guardará en la base de datos
-                    </div>
-                                        <div className="text-xs text-amber-600 mt-1">
-                       Comisiones Denegadas: ₡{estadoQuincena?.estado === "DENEGADA" ? estadoQuincena.totalComisiones : 0}
-                     </div>
+                   <div className="text-xs text-gray-500 mt-1">
+                     Salario Base: ₡{nuevoPagoSalario.monto_salario.toLocaleString()} + 
+                     Comisiones PENDIENTES: ₡{(totalPagoConComision - nuevoPagoSalario.monto_salario).toLocaleString()}
+                   </div>
+                   <div className="text-xs text-green-600 mt-1 font-medium">
+                     💡 Al registrar el pago, las comisiones PENDIENTES se marcarán como APROBADAS
+                   </div>
                  </div>
               </div>
             )}
@@ -1860,6 +1916,83 @@ export function TallerSection() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Popup de confirmación para denegar comisiones */}
+      <AlertDialog open={showConfirmDenegar} onOpenChange={setShowConfirmDenegar}>
+        <AlertDialogContent className="bg-white border-0 shadow-2xl rounded-xl max-w-md mx-auto">
+          <div className="p-6">
+            {/* Header con ícono */}
+            <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
+              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            
+            {/* Título */}
+            <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
+              Denegar Comisiones
+            </h3>
+            
+            {/* Mensaje principal */}
+            <p className="text-gray-600 text-center mb-6">
+              ¿Estás seguro de que quieres denegar las comisiones de esta quincena?
+            </p>
+            
+            {/* Advertencia */}
+            <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-4 rounded-r-lg">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-red-800 font-medium">Advertencia</p>
+                  <p className="text-sm text-red-700 mt-1">
+                    Al denegar las comisiones, se eliminarán permanentemente de la base de datos y no se podrán recuperar.
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Información adicional */}
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded-r-lg">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-blue-800 font-medium">Información</p>
+                  <p className="text-sm text-blue-700 mt-1">
+                    Después de denegar las comisiones, podrás registrar el pago del salario base sin problemas.
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Botones */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowConfirmDenegar(false)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  setShowConfirmDenegar(false)
+                  aprobarDenegarComisionesQuincena(false)
+                }}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
+              >
+                Denegar Comisiones
+              </button>
+            </div>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Dialog para ver gasto */}
       <Dialog open={isViewGastoDialogOpen} onOpenChange={setIsViewGastoDialogOpen}>
@@ -2023,6 +2156,89 @@ export function TallerSection() {
               Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Popup de alerta para pago duplicado */}
+      <AlertDialog open={showPagoDuplicadoAlert} onOpenChange={setShowPagoDuplicadoAlert}>
+        <AlertDialogContent className="bg-white border-0 shadow-2xl rounded-xl max-w-lg mx-auto">
+          <div className="p-6">
+            {/* Header con ícono */}
+            <div className="flex items-center justify-center w-12 h-12 bg-amber-100 rounded-full mx-auto mb-4">
+              <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            
+            {/* Título */}
+            <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
+              Pago Ya Registrado
+            </h3>
+            
+            {/* Mensaje principal */}
+            <p className="text-gray-600 text-center mb-6">
+              Ya se ha registrado un pago para este mecánico en esta quincena
+            </p>
+            
+            {/* Información del pago duplicado */}
+            {pagoDuplicadoInfo && (
+              <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Mecánico</p>
+                      <p className="text-sm font-semibold text-gray-900">{pagoDuplicadoInfo.mecanico}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Semana</p>
+                      <p className="text-sm font-semibold text-gray-900">Semana {pagoDuplicadoInfo.semana}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Fecha del Pago</p>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {new Date(pagoDuplicadoInfo.fecha).toLocaleDateString('es-CR')}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Monto Pagado</p>
+                      <p className="text-lg font-bold text-green-600">
+                        ₡{pagoDuplicadoInfo.monto.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Información del sistema */}
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded-r-lg">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-blue-800 font-medium">¿Por qué no se permite?</p>
+                  <p className="text-sm text-blue-700 mt-1">
+                    El sistema evita duplicaciones y mantiene la integridad de los datos financieros.
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Botón de acción */}
+            <div className="flex justify-center">
+              <button
+                onClick={() => setShowPagoDuplicadoAlert(false)}
+                className="px-6 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
         </AlertDialogContent>
       </AlertDialog>
     </div>

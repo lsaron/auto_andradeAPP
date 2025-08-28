@@ -8,14 +8,16 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { BarChart3, TrendingUp, TrendingDown, DollarSign, Calendar, Download } from "lucide-react"
+import { BarChart3, TrendingUp, TrendingDown, DollarSign, Calendar, Download, Users, Eye } from "lucide-react"
 
 interface MonthlyReport {
   month: string
   year: number
   totalIncome: number
-  totalExpenses: number
+  totalExpenses: number // Solo gastos de repuestos
   netProfit: number
+  gastosTaller: number // Gastos del taller
+  salarios: number // Salarios de empleados
 }
 
 interface WorkOrderReport {
@@ -29,6 +31,26 @@ interface WorkOrderReport {
   profit: number
 }
 
+interface MecanicoResumen {
+  id: string
+  nombre: string
+  totalSalarial: number
+  totalComisiones: number
+  totalGananciaBase: number
+  margenGanancia: number
+}
+
+interface TrabajoMecanico {
+  id: string
+  fecha: string
+  matricula: string
+  cliente: string
+  descripcion: string
+  ganancia: number
+  comision: number
+  salario: number
+}
+
 export function ReportsSection() {
   console.log("🚀 ReportsSection renderizado, isAuthModalOpen:", true, "isAuthenticated:", false)
   const [selectedYear, setSelectedYear] = useState("")
@@ -40,6 +62,15 @@ export function ReportsSection() {
   const [currentReport, setCurrentReport] = useState<MonthlyReport | null>(null)
   const [previousReport, setPreviousReport] = useState<MonthlyReport | null>(null)
   
+  // Estados para gastos del taller y salarios
+  const [gastosTaller, setGastosTaller] = useState<any[]>([])
+  const [pagosSalarios, setPagosSalarios] = useState<any[]>([])
+  
+  // Estados para el diálogo de detalle del mecánico
+  const [isMecanicoDetalleOpen, setIsMecanicoDetalleOpen] = useState(false)
+  const [mecanicoSeleccionado, setMecanicoSeleccionado] = useState<MecanicoResumen | null>(null)
+  const [trabajosMecanico, setTrabajosMecanico] = useState<TrabajoMecanico[]>([])
+  
   // Estados para autenticación simple
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(true) // Se abre automáticamente
   const [authPassword, setAuthPassword] = useState("")
@@ -49,6 +80,143 @@ export function ReportsSection() {
   
   // Estado de carga inicial
   const [initialLoading, setInitialLoading] = useState(true)
+
+  // Función para calcular otros gastos (gastos del taller + salarios)
+  const calculateOtherExpenses = () => {
+    if (!currentReport) {
+      console.log("❌ calculateOtherExpenses: No hay currentReport")
+      return 0
+    }
+    
+    const gastosTaller = Number(currentReport.gastosTaller) || 0
+    const salarios = Number(currentReport.salarios) || 0
+    const total = gastosTaller + salarios
+    
+    console.log("💰 calculateOtherExpenses:", {
+      gastosTaller,
+      salarios,
+      total,
+      currentReport
+    })
+    
+    return total
+  }
+
+  // Función para obtener resumen de mecánicos del mes
+  const getMecanicosResumen = (): MecanicoResumen[] => {
+    if (!selectedYear || !selectedMonth) return []
+    
+    const [year, month] = selectedMonth.split('-')
+    const selectedYearNum = parseInt(year)
+    const selectedMonthNum = parseInt(month)
+    
+    // Obtener mecánicos únicos
+    const mecanicosUnicos = new Map<string, MecanicoResumen>()
+    
+    // Procesar salarios del mes para obtener la lista de mecánicos
+    pagosSalarios.forEach(pago => {
+      const fechaPago = new Date(pago.fecha_pago)
+      if (fechaPago.getFullYear() === selectedYearNum && fechaPago.getMonth() === selectedMonthNum - 1) {
+        const mecanicoId = pago.id_mecanico
+        const nombreMecanico = pago.nombre_mecanico || "Mecánico"
+        
+        if (!mecanicosUnicos.has(mecanicoId)) {
+          mecanicosUnicos.set(mecanicoId, {
+            id: mecanicoId,
+            nombre: nombreMecanico,
+            totalSalarial: 0,
+            totalComisiones: 0,
+            totalGananciaBase: 0,
+            margenGanancia: 0
+          })
+        }
+        
+        const mecanico = mecanicosUnicos.get(mecanicoId)!
+        mecanico.totalSalarial += Number(pago.monto_salario) || 0
+      }
+    })
+    
+    // Procesar trabajos para obtener ganancias base
+    // Por ahora, distribuimos la ganancia total entre todos los mecánicos
+    // En el futuro, esto debería venir de la base de datos con el mecánico asignado a cada trabajo
+    const trabajosDelMes = workOrdersReport.filter(trabajo => {
+      const fechaTrabajo = new Date(trabajo.date)
+      return fechaTrabajo.getFullYear() === selectedYearNum && fechaTrabajo.getMonth() === selectedMonthNum - 1
+    })
+    
+    const gananciaTotalDelMes = trabajosDelMes.reduce((sum, trabajo) => sum + trabajo.profit, 0)
+    const numeroMecanicos = mecanicosUnicos.size
+    
+    if (numeroMecanicos > 0) {
+      // Distribuir la ganancia total entre los mecánicos (por ahora equitativamente)
+      const gananciaPorMecanico = gananciaTotalDelMes / numeroMecanicos
+      
+      mecanicosUnicos.forEach(mecanico => {
+        mecanico.totalGananciaBase = gananciaPorMecanico
+      })
+    }
+    
+    // Calcular margen de ganancia (ganancia base - salario)
+    mecanicosUnicos.forEach(mecanico => {
+      mecanico.margenGanancia = mecanico.totalGananciaBase - mecanico.totalSalarial
+    })
+    
+    const resultado = Array.from(mecanicosUnicos.values())
+    
+    // Logs de debug
+    console.log("🔧 getMecanicosResumen - Datos procesados:", {
+      selectedYear: selectedYearNum,
+      selectedMonth: selectedMonthNum,
+      trabajosDelMes: trabajosDelMes.length,
+      gananciaTotalDelMes,
+      numeroMecanicos,
+      gananciaPorMecanico: numeroMecanicos > 0 ? gananciaTotalDelMes / numeroMecanicos : 0,
+      resultado
+    })
+    
+    return resultado
+  }
+
+  // Función para abrir el diálogo de detalle del mecánico
+  const openMecanicoDetalle = (mecanico: MecanicoResumen) => {
+    setMecanicoSeleccionado(mecanico)
+    
+    // Obtener trabajos del mecánico para el mes seleccionado
+    if (selectedYear && selectedMonth) {
+      const [year, month] = selectedMonth.split('-')
+      const selectedYearNum = parseInt(year)
+      const selectedMonthNum = parseInt(month)
+      
+      const trabajosDelMes = workOrdersReport.filter(trabajo => {
+        const fechaTrabajo = new Date(trabajo.date)
+        return fechaTrabajo.getFullYear() === selectedYearNum && 
+               fechaTrabajo.getMonth() === selectedMonthNum - 1
+      })
+      
+      // Convertir a formato TrabajoMecanico
+      const trabajosFormateados: TrabajoMecanico[] = trabajosDelMes.map(trabajo => ({
+        id: trabajo.id,
+        fecha: trabajo.date,
+        matricula: trabajo.licensePlate,
+        cliente: trabajo.clientName,
+        descripcion: trabajo.description,
+        ganancia: trabajo.profit,
+        comision: 0, // Por ahora placeholder - debería venir de la base de datos
+        salario: 0 // Por ahora placeholder - debería venir de la base de datos
+      }))
+      
+      setTrabajosMecanico(trabajosFormateados)
+      
+      console.log("🔍 openMecanicoDetalle - Trabajos del mecánico:", {
+        mecanico: mecanico.nombre,
+        trabajosDelMes: trabajosDelMes.length,
+        trabajosFormateados: trabajosFormateados.length,
+        gananciaTotal: trabajosFormateados.reduce((sum, t) => sum + t.ganancia, 0)
+      })
+    }
+    
+    setIsMecanicoDetalleOpen(true)
+  }
 
   // Función de autenticación simple
   const handleAuthSubmit = async (e: React.FormEvent) => {
@@ -101,6 +269,24 @@ export function ReportsSection() {
       console.log("📊 Trabajos cargados:", trabajos)
       console.log("📊 Total de trabajos:", trabajos.length)
 
+      // Obtener gastos del taller
+      const responseGastos = await fetch("http://localhost:8000/api/gastos-taller/")
+      if (!responseGastos.ok) {
+        throw new Error("Error al cargar los gastos del taller")
+      }
+      const gastosTaller = await responseGastos.json()
+      console.log("💰 Gastos del taller cargados:", gastosTaller)
+      setGastosTaller(gastosTaller)
+
+      // Obtener pagos de salarios
+      const responseSalarios = await fetch("http://localhost:8000/api/pagos-salarios/")
+      if (!responseSalarios.ok) {
+        throw new Error("Error al cargar los pagos de salarios")
+      }
+      const pagosSalarios = await responseSalarios.json()
+      console.log("💵 Pagos de salarios cargados:", pagosSalarios)
+      setPagosSalarios(pagosSalarios)
+
       // Transformar datos del backend al formato del frontend
       const transformedWorkOrders: WorkOrderReport[] = trabajos.map((trabajo: any) => ({
         id: `WO-${trabajo.id.toString().padStart(3, '0')}`,
@@ -115,8 +301,8 @@ export function ReportsSection() {
 
       setWorkOrdersReport(transformedWorkOrders)
 
-      // Generar reportes mensuales basados en los datos reales
-      const monthlyData = generateMonthlyReports(transformedWorkOrders)
+      // Generar reportes mensuales con datos completos
+      const monthlyData = generateMonthlyReports(transformedWorkOrders, gastosTaller, pagosSalarios)
       setMonthlyReports(monthlyData)
 
       // Establecer mes actual y anterior
@@ -143,10 +329,11 @@ export function ReportsSection() {
     }
   }
 
-  // Función para generar reportes mensuales
-  const generateMonthlyReports = (workOrders: WorkOrderReport[]): MonthlyReport[] => {
+  // Función para generar reportes mensuales con datos completos
+  const generateMonthlyReports = (workOrders: WorkOrderReport[], gastosTaller: any[], pagosSalarios: any[]): MonthlyReport[] => {
     const monthlyMap = new Map<string, MonthlyReport>()
 
+    // Procesar trabajos (ingresos y gastos de repuestos)
     workOrders.forEach(order => {
       const date = new Date(order.date)
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
@@ -159,21 +346,54 @@ export function ReportsSection() {
           totalIncome: 0,
           totalExpenses: 0,
           netProfit: 0,
+          gastosTaller: 0,
+          salarios: 0,
         })
       }
 
       const monthData = monthlyMap.get(monthKey)!
       monthData.totalIncome += order.income
-      monthData.totalExpenses += order.expenses
+      monthData.totalExpenses += order.expenses // Solo gastos de repuestos
       monthData.netProfit += order.profit
     })
 
+    // Procesar gastos del taller
+    console.log("💰 Procesando gastos del taller:", gastosTaller.length)
+    gastosTaller.forEach(gasto => {
+      const date = new Date(gasto.fecha_gasto)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      
+      if (monthlyMap.has(monthKey)) {
+        const monthData = monthlyMap.get(monthKey)!
+        const montoGasto = Number(gasto.monto) || 0
+        monthData.gastosTaller = (monthData.gastosTaller || 0) + montoGasto
+        console.log(`💰 Gasto taller ${monthKey}: ${montoGasto} (tipo: ${typeof montoGasto}) -> Total: ${monthData.gastosTaller} (tipo: ${typeof monthData.gastosTaller})`)
+      }
+    })
+
+    // Procesar pagos de salarios
+    console.log("💵 Procesando pagos de salarios:", pagosSalarios.length)
+    pagosSalarios.forEach(pago => {
+      const date = new Date(pago.fecha_pago)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      
+      if (monthlyMap.has(monthKey)) {
+        const monthData = monthlyMap.get(monthKey)!
+        const montoSalario = Number(pago.monto_salario) || 0
+        monthData.salarios = (monthData.salarios || 0) + montoSalario
+        console.log(`💵 Salario ${monthKey}: ${montoSalario} (tipo: ${typeof montoSalario}) -> Total: ${monthData.salarios} (tipo: ${typeof monthData.salarios})`)
+      }
+    })
+
     // Ordenar por fecha (más reciente primero)
-    return Array.from(monthlyMap.values())
+    const result = Array.from(monthlyMap.values())
       .sort((a, b) => {
         if (a.year !== b.year) return b.year - a.year
         return getMonthNumber(b.month) - getMonthNumber(a.month)
       })
+    
+    console.log("📊 Reportes mensuales generados:", result)
+    return result
   }
 
   // Función auxiliar para obtener número del mes
@@ -484,7 +704,7 @@ export function ReportsSection() {
       </div>
 
       {/* Financial Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         <Card className="aspect-square sm:aspect-auto">
           <CardHeader className="pb-2 p-3 sm:p-4 lg:p-6">
             <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2">
@@ -501,6 +721,9 @@ export function ReportsSection() {
             <div className="space-y-2">
               <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600">
                 {formatCurrency(currentReport.totalIncome)}
+              </div>
+              <div className="text-xs text-gray-500">
+                Suma de todos los cobros a clientes
               </div>
               <div className={`flex items-center gap-1 text-xs sm:text-sm ${getChangeColor(incomeChange)}`}>
                 {previousReport ? (
@@ -520,7 +743,7 @@ export function ReportsSection() {
           <CardHeader className="pb-2 p-3 sm:p-4 lg:p-6">
             <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2">
               <TrendingDown className="h-4 w-4 text-red-600" />
-              Gastos Totales
+              Gastos Repuestos
               {selectedYear && selectedMonth && (
                 <span className="text-xs text-muted-foreground font-normal">
                   ({selectedMonth.split('-')[1]}/{selectedYear})
@@ -532,6 +755,12 @@ export function ReportsSection() {
             <div className="space-y-2">
               <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-red-600">
                 {formatCurrency(currentReport.totalExpenses)}
+              </div>
+              <div className="text-xs text-gray-500">
+                Solo gastos de repuestos por trabajos
+              </div>
+              <div className="text-xs text-gray-400">
+                (No incluye gastos del taller ni salarios)
               </div>
               <div className={`flex items-center gap-1 text-xs sm:text-sm ${getChangeColor(-expenseChange)}`}>
                 {previousReport ? (
@@ -547,7 +776,32 @@ export function ReportsSection() {
           </CardContent>
         </Card>
 
+        {/* Tercer dashboard - Gastos Taller */}
         <Card className="aspect-square sm:aspect-auto">
+          <CardHeader className="pb-2 p-3 sm:p-4 lg:p-6">
+            <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2">
+              <TrendingDown className="h-4 w-4 text-orange-600" />
+              Gastos Taller
+              {selectedYear && selectedMonth && (
+                <span className="text-xs text-muted-foreground font-normal">
+                  ({selectedMonth.split('-')[1]}/{selectedYear})
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 sm:p-4 lg:p-6 pt-0">
+            <div className="space-y-2">
+              <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-orange-600">
+                {formatCurrency(calculateOtherExpenses())}
+              </div>
+              <div className="text-xs text-gray-500">
+                Gastos del taller + salarios empleados
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+                <Card className="aspect-square sm:aspect-auto">
           <CardHeader className="pb-2 p-3 sm:p-4 lg:p-6">
             <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-blue-600" />
@@ -563,6 +817,9 @@ export function ReportsSection() {
             <div className="space-y-2">
               <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-blue-600">
                 {formatCurrency(currentReport.netProfit)}
+              </div>
+              <div className="text-xs text-gray-500">
+                Ganancia base + markup de repuestos
               </div>
               <div className={`flex items-center gap-1 text-xs sm:text-sm ${getChangeColor(profitChange)}`}>
                 {previousReport ? (
@@ -599,7 +856,8 @@ export function ReportsSection() {
                   <TableRow>
                     <TableHead className="px-2 sm:px-4 text-xs sm:text-sm">Mes</TableHead>
                     <TableHead className="px-2 sm:px-4 text-xs sm:text-sm">Ingresos</TableHead>
-                    <TableHead className="px-2 sm:px-4 text-xs sm:text-sm hidden sm:table-cell">Gastos</TableHead>
+                    <TableHead className="px-2 sm:px-4 text-xs sm:text-sm hidden sm:table-cell">Gastos Repuestos</TableHead>
+                    <TableHead className="px-2 sm:px-4 text-xs sm:text-sm hidden lg:table-cell">Otros Gastos</TableHead>
                     <TableHead className="px-2 sm:px-4 text-xs sm:text-sm">Ganancia</TableHead>
                     <TableHead className="px-2 sm:px-4 text-xs sm:text-sm hidden md:table-cell">Margen</TableHead>
                   </TableRow>
@@ -612,15 +870,90 @@ export function ReportsSection() {
                       </TableCell>
                       <TableCell className="px-2 sm:px-4 text-xs sm:text-sm font-medium text-green-600">
                         {formatCurrency(report.totalIncome)}
-                      </TableCell>
+                        </TableCell>
                       <TableCell className="px-2 sm:px-4 text-xs sm:text-sm font-medium text-red-600 hidden sm:table-cell">
                         {formatCurrency(report.totalExpenses)}
+                      </TableCell>
+                      <TableCell className="px-2 sm:px-4 text-xs sm:text-sm font-medium text-orange-600 hidden lg:table-cell">
+                        {formatCurrency(report.gastosTaller + report.salarios)}
                       </TableCell>
                       <TableCell className="px-2 sm:px-4 text-xs sm:text-sm font-medium text-blue-600">
                         {formatCurrency(report.netProfit)}
                       </TableCell>
                       <TableCell className="px-2 sm:px-4 text-xs sm:text-sm hidden md:table-cell">
                         {((report.netProfit / report.totalIncome) * 100).toFixed(1)}%
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Mecánicos - Resumen del Mes */}
+      <Card className="w-full">
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Mecánicos {selectedYear && selectedMonth && (
+              <span className="text-sm font-normal text-muted-foreground">
+                - {selectedMonth.split('-')[1]}/{selectedYear}
+              </span>
+            )}
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Resumen de salarios, comisiones y ganancias por mecánico en el mes seleccionado
+          </p>
+        </CardHeader>
+        <CardContent className="p-0 sm:p-6 sm:pt-0">
+          <div className="overflow-x-auto">
+            <div className="min-w-full inline-block align-middle">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="px-2 sm:px-4 text-xs sm:text-sm">Mecánico</TableHead>
+                    <TableHead className="px-2 sm:px-4 text-xs sm:text-sm hidden sm:table-cell">Total Salarial</TableHead>
+                    <TableHead className="px-2 sm:px-4 text-xs sm:text-sm hidden md:table-cell">Total Comisiones</TableHead>
+                    <TableHead className="px-2 sm:px-4 text-xs sm:text-sm hidden lg:table-cell">Total Ganancia Base</TableHead>
+                    <TableHead className="px-2 sm:px-4 text-xs sm:text-sm">Margen de Ganancia</TableHead>
+                    <TableHead className="px-2 sm:px-4 text-xs sm:text-sm text-center">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {getMecanicosResumen().map((mecanico) => (
+                    <TableRow key={mecanico.id} className="hover:bg-gray-50">
+                      <TableCell className="font-medium px-2 sm:px-4 text-xs sm:text-sm">
+                        {mecanico.nombre}
+                      </TableCell>
+                      <TableCell className="px-2 sm:px-4 text-xs sm:text-sm font-medium text-red-600 hidden sm:table-cell">
+                        {formatCurrency(mecanico.totalSalarial)}
+                      </TableCell>
+                      <TableCell className="px-2 sm:px-4 text-xs sm:text-sm font-medium text-blue-600 hidden md:table-cell">
+                        {formatCurrency(mecanico.totalComisiones)}
+                      </TableCell>
+                      <TableCell className="px-2 sm:px-4 text-xs sm:text-sm font-medium text-green-600 hidden lg:table-cell">
+                        {formatCurrency(mecanico.totalGananciaBase)}
+                      </TableCell>
+                      <TableCell className="px-2 sm:px-4 text-xs sm:text-sm font-medium">
+                        <span className={`px-2 py-1 rounded-full text-xs ${
+                          mecanico.margenGanancia >= 0 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {mecanico.margenGanancia >= 0 ? '+' : ''}{formatCurrency(mecanico.margenGanancia)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-2 sm:px-4 text-xs sm:text-sm text-center">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openMecanicoDetalle(mecanico)}
+                          className="h-7 px-2 text-xs"
+                        >
+                          Ver Más
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -783,6 +1116,113 @@ export function ReportsSection() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Diálogo de Detalle del Mecánico */}
+      <Dialog open={isMecanicoDetalleOpen} onOpenChange={setIsMecanicoDetalleOpen}>
+        <DialogContent className="bg-white max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Detalle del Mecánico: {mecanicoSeleccionado?.nombre}
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              {selectedYear && selectedMonth && (
+                <>Mes: {selectedMonth.split('-')[1]}/{selectedYear}</>
+              )}
+            </p>
+          </DialogHeader>
+          
+          {mecanicoSeleccionado && (
+            <div className="space-y-6">
+              {/* Resumen del Mecánico */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardHeader className="pb-2 p-3">
+                    <CardTitle className="text-xs font-medium text-red-600">Total Salarial</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-3 pt-0">
+                    <div className="text-lg font-bold">{formatCurrency(mecanicoSeleccionado.totalSalarial)}</div>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="pb-2 p-3">
+                    <CardTitle className="text-xs font-medium text-blue-600">Total Comisiones</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-3 pt-0">
+                    <div className="text-lg font-bold">{formatCurrency(mecanicoSeleccionado.totalComisiones)}</div>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="pb-2 p-3">
+                    <CardTitle className="text-xs font-medium text-green-600">Total Ganancia Base</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-3 pt-0">
+                    <div className="text-lg font-bold">{formatCurrency(mecanicoSeleccionado.totalGananciaBase)}</div>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="pb-2 p-3">
+                    <CardTitle className="text-xs font-medium">Margen de Ganancia</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-3 pt-0">
+                    <div className={`text-lg font-bold ${
+                      mecanicoSeleccionado.margenGanancia >= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {mecanicoSeleccionado.margenGanancia >= 0 ? '+' : ''}{formatCurrency(mecanicoSeleccionado.margenGanancia)}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Lista de Trabajos del Mecánico */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3">Trabajos Realizados en el Mes</h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="px-3 py-2 text-xs">Fecha</TableHead>
+                        <TableHead className="px-3 py-2 text-xs">ID</TableHead>
+                        <TableHead className="px-3 py-2 text-xs">Placa</TableHead>
+                        <TableHead className="px-3 py-2 text-xs">Cliente</TableHead>
+                        <TableHead className="px-3 py-2 text-xs">Descripción</TableHead>
+                        <TableHead className="px-3 py-2 text-xs">Ganancia</TableHead>
+                        <TableHead className="px-3 py-2 text-xs">Comisión</TableHead>
+                        <TableHead className="px-3 py-2 text-xs">Salario</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {trabajosMecanico.length > 0 ? (
+                        trabajosMecanico.map((trabajo) => (
+                          <TableRow key={trabajo.id} className="hover:bg-gray-50">
+                            <TableCell className="px-3 py-2 text-xs">{formatDate(trabajo.fecha)}</TableCell>
+                            <TableCell className="font-medium px-3 py-2 text-xs">{trabajo.id}</TableCell>
+                            <TableCell className="px-3 py-2 text-xs">{trabajo.matricula}</TableCell>
+                            <TableCell className="px-3 py-2 text-xs max-w-[120px] truncate">{trabajo.cliente}</TableCell>
+                            <TableCell className="px-3 py-2 text-xs max-w-[150px] truncate">{trabajo.descripcion}</TableCell>
+                            <TableCell className="px-3 py-2 text-xs font-medium text-green-600">{formatCurrency(trabajo.ganancia)}</TableCell>
+                            <TableCell className="px-3 py-2 text-xs font-medium text-blue-600">{formatCurrency(trabajo.comision)}</TableCell>
+                            <TableCell className="px-3 py-2 text-xs font-medium text-red-600">{formatCurrency(trabajo.salario)}</TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            No hay trabajos para este mecánico en el período seleccionado
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

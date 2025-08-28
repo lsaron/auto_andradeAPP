@@ -11,6 +11,26 @@ from app.models.detalle_gastos import DetalleGasto
 from app.schemas.mecanicos import MecanicoCreate, MecanicoUpdate, MecanicoConEstadisticas
 import calendar
 
+def calcular_fechas_quincena(año: int, num_quincena: int) -> tuple[datetime, datetime]:
+    """
+    Calcula las fechas de inicio y fin de una quincena específica.
+    Sistema de 4 semanas por mes mapeadas a 2 quincenas:
+    - Semanas 1-2 = Q1 (días 1-15)
+    - Semanas 3-4 = Q2 (días 16-31)
+    """
+    if num_quincena in [1, 2]:
+        # Primera quincena: días 1-15 del mes
+        fecha_inicio = datetime(año, 1, 1)
+        fecha_fin = datetime(año, 12, 15)
+    elif num_quincena in [3, 4]:
+        # Segunda quincena: días 16-31 del mes
+        fecha_inicio = datetime(año, 1, 16)
+        fecha_fin = datetime(año, 12, 31)
+    else:
+        raise ValueError(f"Número de quincena inválido: {num_quincena}. Debe ser 1, 2, 3 o 4.")
+    
+    return fecha_inicio, fecha_fin
+
 class MecanicoService:
     
     def __init__(self, db: Session):
@@ -341,14 +361,11 @@ class MecanicoService:
             año = int(año)
             num_quincena = int(num_quincena.replace('Q', ''))
             
-            # Calcular fechas de inicio y fin de la quincena
-            if num_quincena == 1:
-                fecha_inicio = datetime(año, 1, 1)
-                fecha_fin = datetime(año, 12, 15)
-            elif num_quincena == 2:
-                fecha_inicio = datetime(año, 1, 16)
-                fecha_fin = datetime(año, 12, 31)
-            else:
+            # Calcular fechas de inicio y fin de la quincena usando la función auxiliar
+            try:
+                fecha_inicio, fecha_fin = calcular_fechas_quincena(año, num_quincena)
+            except ValueError as e:
+                print(f"Error en formato de quincena: {e}")
                 return []
             
             # Buscar comisiones por fecha del trabajo dentro del rango de la quincena
@@ -505,15 +522,11 @@ class MecanicoService:
             except ValueError:
                 return {"error": f"Formato de quincena inválido: {quincena}. Debe ser YYYY-Q1, YYYY-Q2, etc."}
             
-            # Calcular fechas de inicio y fin de la quincena
-            if num_quincena == 1:
-                fecha_inicio = datetime(año, 1, 1)
-                fecha_fin = datetime(año, 12, 15)
-            elif num_quincena == 2:
-                fecha_inicio = datetime(año, 1, 16)
-                fecha_fin = datetime(año, 12, 31)
-            else:
-                return {"error": f"Número de quincena inválido: {num_quincena}. Debe ser 1 o 2."}
+            # Calcular fechas de inicio y fin de la quincena usando la función auxiliar
+            try:
+                fecha_inicio, fecha_fin = calcular_fechas_quincena(año, num_quincena)
+            except ValueError as e:
+                return {"error": f"Error en formato de quincena: {e}"}
             
             # Obtener todas las comisiones del mecánico para esa quincena
             # Buscar por fecha del trabajo dentro del rango de la quincena

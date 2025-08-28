@@ -44,7 +44,7 @@ WHERE estado_comision IS NULL;
 
 -- ========================================
 -- PASO 5: Calcular y asignar quincenas basándose en fecha_calculo
--- Sistema: Q1 = días 1-15, Q2 = días 16-31
+-- Sistema: Q1 = Semanas 1-2 (días 1-15), Q2 = Semanas 3-4 (días 16-31)
 -- ========================================
 UPDATE comisiones_mecanicos 
 SET quincena = CASE 
