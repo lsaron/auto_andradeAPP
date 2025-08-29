@@ -4,6 +4,8 @@ from app.models.database import get_db
 from app.models.trabajos import Trabajo
 from app.models.detalle_gastos import DetalleGasto
 from app.models.carros import Carro  # ✅ Importar el modelo de Carro
+from app.models.comisiones_mecanicos import ComisionMecanico
+from app.models.mecanicos import Mecanico
 from app.schemas.trabajos import TrabajoSchema
 from app.models.clientes import Cliente  
 from weasyprint import HTML
@@ -75,6 +77,21 @@ def obtener_todos_los_trabajos(db: Session = Depends(get_db)):
         mano_obra = trabajo.mano_obra if isinstance(trabajo.mano_obra, Decimal) else Decimal(str(trabajo.mano_obra or '0.00'))
         ganancia_base_comisiones = mano_obra - total_gastos
 
+        # ✅ OBTENER MECÁNICOS ASIGNADOS AL TRABAJO
+        mecanicos_asignados = db.query(ComisionMecanico).filter(
+            ComisionMecanico.id_trabajo == trabajo.id
+        ).all()
+        
+        # Lista de IDs de mecánicos asignados
+        mecanicos_ids = [m.id_mecanico for m in mecanicos_asignados]
+        
+        # Obtener nombres de los mecánicos asignados
+        nombres_mecanicos = []
+        for mecanico_id in mecanicos_ids:
+            mecanico = db.query(Mecanico).filter(Mecanico.id == mecanico_id).first()
+            if mecanico:
+                nombres_mecanicos.append(mecanico.nombre)
+
         resultado.append({
             "id": trabajo.id,
             "matricula_carro": trabajo.matricula_carro,
@@ -90,6 +107,10 @@ def obtener_todos_los_trabajos(db: Session = Depends(get_db)):
             "total_gastos": float(total_gastos),
             "ganancia_total": float(ganancia_total),  # Ganancia total del trabajo
             "ganancia_base_comisiones": float(ganancia_base_comisiones),  # Ganancia base para comisiones
+            # ✅ NUEVOS CAMPOS PARA MECÁNICOS
+            "mecanicos_ids": mecanicos_ids,  # Lista de IDs de mecánicos asignados
+            "mecanicos_nombres": nombres_mecanicos,  # Lista de nombres de mecánicos
+            "total_mecanicos": len(mecanicos_ids),  # Número total de mecánicos asignados
         })
 
     return resultado

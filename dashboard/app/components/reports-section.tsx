@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { BarChart3, TrendingUp, TrendingDown, DollarSign, Calendar, Download, Users, Eye } from "lucide-react"
+import { useMonthlyReset } from "@/hooks/use-monthly-reset"
 
 interface MonthlyReport {
   month: string
@@ -29,6 +30,13 @@ interface WorkOrderReport {
   income: number
   expenses: number
   profit: number
+  manoObra: number // ✅ Agregado: Mano de obra para calcular ganancia base
+  comision: number // ✅ Agregado: Comisión del trabajo
+  mechanicId?: number // ✅ Agregado: ID del mecánico asignado al trabajo
+  // ✅ NUEVOS CAMPOS PARA MECÁNICOS
+  mecanicosIds?: number[] // Lista completa de IDs de mecánicos asignados
+  mecanicosNombres?: string[] // Lista de nombres de mecánicos asignados
+  totalMecanicos?: number // Total de mecánicos asignados al trabajo
 }
 
 interface MecanicoResumen {
@@ -52,7 +60,7 @@ interface TrabajoMecanico {
 }
 
 export function ReportsSection() {
-  console.log("🚀 ReportsSection renderizado, isAuthModalOpen:", true, "isAuthenticated:", false)
+  console.log("🚀 ReportsSection renderizado, isAuthModalOpen:", false, "isAuthenticated:", true, "✅ AUTH TEMPORALMENTE DESACTIVADO")
   const [selectedYear, setSelectedYear] = useState("")
   const [selectedMonth, setSelectedMonth] = useState("")
   const [monthlyReports, setMonthlyReports] = useState<MonthlyReport[]>([])
@@ -65,21 +73,37 @@ export function ReportsSection() {
   // Estados para gastos del taller y salarios
   const [gastosTaller, setGastosTaller] = useState<any[]>([])
   const [pagosSalarios, setPagosSalarios] = useState<any[]>([])
+  const [estadisticasMecanicos, setEstadisticasMecanicos] = useState<Map<string, any>>(new Map())
   
   // Estados para el diálogo de detalle del mecánico
   const [isMecanicoDetalleOpen, setIsMecanicoDetalleOpen] = useState(false)
   const [mecanicoSeleccionado, setMecanicoSeleccionado] = useState<MecanicoResumen | null>(null)
   const [trabajosMecanico, setTrabajosMecanico] = useState<TrabajoMecanico[]>([])
   
-  // Estados para autenticación simple
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(true) // Se abre automáticamente
+  // Estado para almacenar el resumen de mecánicos
+  const [mecanicosResumen, setMecanicosResumen] = useState<MecanicoResumen[]>([])
+  
+  // Estados para autenticación simple - TEMPORALMENTE DESACTIVADO PARA DEBUG
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false) // ✅ DESACTIVADO: No se abre automáticamente
   const [authPassword, setAuthPassword] = useState("")
   const [authError, setAuthError] = useState("")
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(true) // ✅ DESACTIVADO: Siempre autenticado
   const [adminUsername] = useState("leonardo")
   
   // Estado de carga inicial
   const [initialLoading, setInitialLoading] = useState(true)
+  
+  // Hook para manejar el reset mensual automático
+  const {
+    isNewMonth,
+    shouldReset,
+    executeReset,
+    checkNewMonth
+  } = useMonthlyReset({
+    autoReset: true,
+    resetDay: 1, // Reset el día 1 de cada mes
+    preserveHistory: true
+  })
 
   // Función para calcular otros gastos (gastos del taller + salarios)
   const calculateOtherExpenses = () => {
@@ -103,7 +127,7 @@ export function ReportsSection() {
   }
 
   // Función para obtener resumen de mecánicos del mes
-  const getMecanicosResumen = (): MecanicoResumen[] => {
+  const getMecanicosResumen = async (): Promise<MecanicoResumen[]> => {
     if (!selectedYear || !selectedMonth) return []
     
     const [year, month] = selectedMonth.split('-')
@@ -120,9 +144,11 @@ export function ReportsSection() {
         const mecanicoId = pago.id_mecanico
         const nombreMecanico = pago.nombre_mecanico || "Mecánico"
         
-        if (!mecanicosUnicos.has(mecanicoId)) {
-          mecanicosUnicos.set(mecanicoId, {
-            id: mecanicoId,
+        console.log(`🔍 Procesando pago para mecánico ${mecanicoId} (${nombreMecanico})`)
+        
+        if (!mecanicosUnicos.has(mecanicoId.toString())) {
+          mecanicosUnicos.set(mecanicoId.toString(), {
+            id: mecanicoId.toString(),
             nombre: nombreMecanico,
             totalSalarial: 0,
             totalComisiones: 0,
@@ -131,29 +157,89 @@ export function ReportsSection() {
           })
         }
         
-        const mecanico = mecanicosUnicos.get(mecanicoId)!
+        const mecanico = mecanicosUnicos.get(mecanicoId.toString())!
         mecanico.totalSalarial += Number(pago.monto_salario) || 0
       }
     })
     
-    // Procesar trabajos para obtener ganancias base
-    // Por ahora, distribuimos la ganancia total entre todos los mecánicos
-    // En el futuro, esto debería venir de la base de datos con el mecánico asignado a cada trabajo
-    const trabajosDelMes = workOrdersReport.filter(trabajo => {
-      const fechaTrabajo = new Date(trabajo.date)
-      return fechaTrabajo.getFullYear() === selectedYearNum && fechaTrabajo.getMonth() === selectedMonthNum - 1
-    })
+    console.log("🔍 Mecánicos únicos encontrados en pagos:", Array.from(mecanicosUnicos.keys()))
     
-    const gananciaTotalDelMes = trabajosDelMes.reduce((sum, trabajo) => sum + trabajo.profit, 0)
-    const numeroMecanicos = mecanicosUnicos.size
+    // ✅ OBTENER GANANCIA BASE INDIVIDUAL DE CADA MECÁNICO DEL ENDPOINT DE ESTADÍSTICAS
+    console.log("🔧 Obteniendo ganancia base individual de cada mecánico")
     
-    if (numeroMecanicos > 0) {
-      // Distribuir la ganancia total entre los mecánicos (por ahora equitativamente)
-      const gananciaPorMecanico = gananciaTotalDelMes / numeroMecanicos
-      
-      mecanicosUnicos.forEach(mecanico => {
-        mecanico.totalGananciaBase = gananciaPorMecanico
-      })
+    // Para cada mecánico, obtener sus estadísticas individuales del backend
+    for (const [mecanicoId, mecanico] of mecanicosUnicos) {
+      try {
+        console.log(`🔧 Obteniendo estadísticas para mecánico ${mecanicoId} (${mecanico.nombre})...`)
+        
+        // Usar el endpoint de estadísticas para obtener la ganancia base individual
+        const response = await fetch(`http://localhost:8000/api/mecanicos/${mecanicoId}/estadisticas?mes=${selectedYear}-${String(selectedMonthNum).padStart(2, '0')}`)
+        
+        if (response.ok) {
+          const stats = await response.json()
+          console.log(`🔧 Estadísticas para mecánico ${mecanicoId}:`, stats)
+          
+          // ✅ CALCULAR GANANCIA BASE TOTAL SUMANDO LOS TRABAJOS ASIGNADOS AL MECÁNICO
+          // Primero, obtener los trabajos del mes seleccionado
+          const trabajosDelMes = workOrdersReport.filter(trabajo => {
+            const fechaTrabajo = new Date(trabajo.date)
+            return fechaTrabajo.getFullYear() === selectedYearNum && fechaTrabajo.getMonth() === selectedMonthNum - 1
+          })
+          
+          // ✅ NUEVA LÓGICA: Filtrar trabajos asignados a este mecánico usando los nuevos campos
+          const trabajosDelMecanico = trabajosDelMes.filter(trabajo => {
+            // Verificar si el mecánico está en la lista de mecánicos asignados al trabajo
+            if (trabajo.mecanicosIds && Array.isArray(trabajo.mecanicosIds)) {
+              return trabajo.mecanicosIds.includes(Number(mecanicoId))
+            }
+            // Fallback: usar el campo mechanicId si existe
+            if (trabajo.mechanicId && Number(trabajo.mechanicId) === Number(mecanicoId)) {
+              return true
+            }
+            return false
+          })
+          
+          console.log(`🔍 Trabajos del mes para mecánico ${mecanico.nombre}:`, trabajosDelMes.length)
+          console.log(`🔍 Trabajos asignados al mecánico ${mecanico.nombre}:`, trabajosDelMecanico.length)
+          
+          // Debug: Mostrar detalles de los trabajos asignados
+          console.log(`🔍 Detalles de trabajos asignados a ${mecanico.nombre}:`, trabajosDelMecanico.map(t => ({
+            id: t.id,
+            manoObra: t.manoObra,
+            expenses: t.expenses,
+            mecanicosIds: t.mecanicosIds,
+            mecanicosNombres: t.mecanicosNombres
+          })))
+          
+          // Calcular ganancia base total sumando (manoObra - expenses) de todos los trabajos asignados
+          const gananciaBaseTotal = trabajosDelMecanico.reduce((sum, trabajo) => {
+            const manoObra = Number(trabajo.manoObra) || 0
+            const gastosReales = Number(trabajo.expenses) || 0
+            const gananciaBaseTrabajo = manoObra - gastosReales
+            console.log(`🔍 Trabajo ${trabajo.id}: manoObra ${manoObra}, gastos ${gastosReales}, ganancia base ${gananciaBaseTrabajo}`)
+            return sum + Math.max(gananciaBaseTrabajo, 0)
+          }, 0)
+          
+          // Usar la ganancia base calculada, no stats.total_ganancias
+          mecanico.totalGananciaBase = gananciaBaseTotal
+          // Usar comisiones_mes para las comisiones individuales del mecánico
+          mecanico.totalComisiones = parseFloat(stats.comisiones_mes || 0)
+          
+          console.log(`🔧 Mecánico ${mecanico.nombre}:`, {
+            gananciaBase: mecanico.totalGananciaBase,
+            comision: mecanico.totalComisiones,
+            salario: mecanico.totalSalarial
+          })
+        } else {
+          console.warn(`⚠️ Error ${response.status} al obtener estadísticas para mecánico ${mecanicoId}`)
+          mecanico.totalGananciaBase = 0
+          mecanico.totalComisiones = 0
+        }
+      } catch (error) {
+        console.warn(`⚠️ No se pudieron cargar estadísticas para mecánico ${mecanicoId}:`, error)
+        mecanico.totalGananciaBase = 0
+        mecanico.totalComisiones = 0
+      }
     }
     
     // Calcular margen de ganancia (ganancia base - salario)
@@ -167,10 +253,10 @@ export function ReportsSection() {
     console.log("🔧 getMecanicosResumen - Datos procesados:", {
       selectedYear: selectedYearNum,
       selectedMonth: selectedMonthNum,
-      trabajosDelMes: trabajosDelMes.length,
-      gananciaTotalDelMes,
-      numeroMecanicos,
-      gananciaPorMecanico: numeroMecanicos > 0 ? gananciaTotalDelMes / numeroMecanicos : 0,
+      estadisticasDisponibles: estadisticasMecanicos.size > 0,
+      numeroMecanicos: mecanicosUnicos.size,
+      estadisticasKeys: Array.from(estadisticasMecanicos.keys()),
+      mecanicosKeys: Array.from(mecanicosUnicos.keys()),
       resultado
     })
     
@@ -178,7 +264,7 @@ export function ReportsSection() {
   }
 
   // Función para abrir el diálogo de detalle del mecánico
-  const openMecanicoDetalle = (mecanico: MecanicoResumen) => {
+  const openMecanicoDetalle = async (mecanico: MecanicoResumen) => {
     setMecanicoSeleccionado(mecanico)
     
     // Obtener trabajos del mecánico para el mes seleccionado
@@ -187,23 +273,84 @@ export function ReportsSection() {
       const selectedYearNum = parseInt(year)
       const selectedMonthNum = parseInt(month)
       
+      // Asegurar que las estadísticas estén cargadas antes de abrir el diálogo
+      if (estadisticasMecanicos.size === 0) {
+        console.log("🔄 Estadísticas no cargadas, cargando ahora...")
+        await loadEstadisticasMecanicos()
+      }
+      
       const trabajosDelMes = workOrdersReport.filter(trabajo => {
         const fechaTrabajo = new Date(trabajo.date)
         return fechaTrabajo.getFullYear() === selectedYearNum && 
                fechaTrabajo.getMonth() === selectedMonthNum - 1
       })
       
-      // Convertir a formato TrabajoMecanico
-      const trabajosFormateados: TrabajoMecanico[] = trabajosDelMes.map(trabajo => ({
-        id: trabajo.id,
-        fecha: trabajo.date,
-        matricula: trabajo.licensePlate,
-        cliente: trabajo.clientName,
-        descripcion: trabajo.description,
-        ganancia: trabajo.profit,
-        comision: 0, // Por ahora placeholder - debería venir de la base de datos
-        salario: 0 // Por ahora placeholder - debería venir de la base de datos
-      }))
+      // Debug: Ver qué datos llegan del backend
+      console.log("🔍 Trabajos del mes encontrados:", trabajosDelMes)
+      console.log("🔍 Primer trabajo (ejemplo):", trabajosDelMes[0])
+      
+      // Obtener estadísticas del mecánico para calcular comisiones
+      const mecanicoId = mecanico.id.toString()
+      const estadisticas = estadisticasMecanicos.get(mecanicoId)
+      console.log("🔍 Estadísticas del mecánico:", mecanicoId, estadisticas)
+      console.log("🔍 Map completo de estadísticas:", estadisticasMecanicos)
+      console.log("🔍 Keys disponibles:", Array.from(estadisticasMecanicos.keys()))
+      
+              // ✅ NUEVA LÓGICA: Filtrar solo los trabajos asignados a este mecánico específico
+      const trabajosDelMecanico = trabajosDelMes.filter(trabajo => {
+        // Verificar si el mecánico está en la lista de mecánicos asignados al trabajo
+        if (trabajo.mecanicosIds && Array.isArray(trabajo.mecanicosIds)) {
+          return trabajo.mecanicosIds.includes(Number(mecanico.id))
+        }
+        // Fallback: usar el campo mechanicId si existe
+        if (trabajo.mechanicId && Number(trabajo.mechanicId) === Number(mecanico.id)) {
+          return true
+        }
+        return false
+      })
+      
+      console.log(`🔍 Trabajos del mes para mecánico ${mecanico.nombre}:`, trabajosDelMes.length)
+      console.log(`🔍 Trabajos asignados al mecánico ${mecanico.nombre}:`, trabajosDelMecanico.length)
+      
+      // Usar la misma lógica de cálculo que work-orders-section.tsx
+      const trabajosFormateados: TrabajoMecanico[] = trabajosDelMecanico.map(trabajo => {
+        console.log(`🔍 Procesando trabajo ${trabajo.id}:`, {
+          profit: trabajo.profit,
+          income: trabajo.income,
+          expenses: trabajo.expenses,
+          manoObra: trabajo.manoObra,
+          comision: trabajo.comision
+        })
+        
+        // ✅ CALCULAR GANANCIA BASE INDIVIDUAL DEL TRABAJO:
+        // Ganancia Base = Mano de Obra - Gastos Reales de Repuestos
+        const gananciaBaseTrabajo = Number(trabajo.manoObra) - Number(trabajo.expenses)
+        
+        // ✅ CALCULAR COMISIÓN INDIVIDUAL DEL TRABAJO:
+        // Comisión = 2% de la Ganancia Base (si es > 0)
+        let comisionPorTrabajo = 0
+        if (gananciaBaseTrabajo > 0) {
+          comisionPorTrabajo = gananciaBaseTrabajo * 0.02
+        }
+        
+        console.log(`🔍 Cálculos individuales para ${trabajo.id}:`, {
+          manoObra: trabajo.manoObra,
+          gastos: trabajo.expenses,
+          gananciaBaseTrabajo,
+          comisionCalculada: comisionPorTrabajo
+        })
+        
+        return {
+          id: trabajo.id,
+          fecha: trabajo.date,
+          matricula: trabajo.licensePlate,
+          cliente: trabajo.clientName,
+          descripcion: trabajo.description,
+          ganancia: gananciaBaseTrabajo, // ✅ Ganancia base individual del trabajo
+          comision: comisionPorTrabajo, // ✅ Comisión individual del trabajo
+          salario: 0 // No mostramos salario por trabajo
+        }
+      })
       
       setTrabajosMecanico(trabajosFormateados)
       
@@ -211,14 +358,18 @@ export function ReportsSection() {
         mecanico: mecanico.nombre,
         trabajosDelMes: trabajosDelMes.length,
         trabajosFormateados: trabajosFormateados.length,
-        gananciaTotal: trabajosFormateados.reduce((sum, t) => sum + t.ganancia, 0)
+        gananciaTotal: trabajosFormateados.reduce((sum, t) => sum + t.ganancia, 0),
+        comisionTotal: trabajosFormateados.reduce((sum, t) => sum + t.comision, 0),
+        // Ver los primeros 3 trabajos formateados para debug
+        primerosTrabajos: trabajosFormateados.slice(0, 3)
       })
     }
     
     setIsMecanicoDetalleOpen(true)
   }
 
-  // Función de autenticación simple
+  // Función de autenticación simple - TEMPORALMENTE DESACTIVADO PARA DEBUG
+  /*
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -252,6 +403,7 @@ export function ReportsSection() {
       setAuthError("Error de conexión. Intente nuevamente.")
     }
   }
+  */
 
   // Cargar datos reales del backend
   const loadReportsData = async () => {
@@ -287,17 +439,55 @@ export function ReportsSection() {
       console.log("💵 Pagos de salarios cargados:", pagosSalarios)
       setPagosSalarios(pagosSalarios)
 
-      // Transformar datos del backend al formato del frontend
-      const transformedWorkOrders: WorkOrderReport[] = trabajos.map((trabajo: any) => ({
-        id: `WO-${trabajo.id.toString().padStart(3, '0')}`,
-        date: trabajo.fecha,
-        licensePlate: trabajo.matricula_carro,
-        clientName: trabajo.cliente_nombre,
-        description: trabajo.descripcion,
-        income: trabajo.costo,
-        expenses: trabajo.total_gastos,
-        profit: trabajo.ganancia,
-      }))
+      // Por ahora, no cargamos estadísticas aquí - se cargarán cuando se seleccione un mes
+      console.log("ℹ️ Las estadísticas de mecánicos se cargarán cuando se seleccione un mes específico")
+
+      // Debug: Ver qué campos tiene el primer trabajo del backend
+      if (trabajos.length > 0) {
+        console.log("🔍 Campos disponibles en el backend:", Object.keys(trabajos[0]))
+        console.log("🔍 Primer trabajo completo:", trabajos[0])
+        console.log("🔍 ¿Tiene campo comision?:", 'comision' in trabajos[0])
+        console.log("🔍 ¿Tiene campo comision_mecanico?:", 'comision_mecanico' in trabajos[0])
+        console.log("🔍 Valor de ganancia:", trabajos[0].ganancia)
+        console.log("🔍 Valor de mano_obra:", trabajos[0].mano_obra)
+        console.log("🔍 Valor de total_gastos:", trabajos[0].total_gastos)
+      }
+      
+      // Debug: Ver qué campos tiene el primer trabajo del backend
+      if (trabajos.length > 0) {
+        console.log("🔍 Campos disponibles en el backend:", Object.keys(trabajos[0]))
+        console.log("🔍 Primer trabajo completo:", trabajos[0])
+        console.log("🔍 ¿Tiene campo comision?:", 'comision' in trabajos[0])
+        console.log("🔍 ¿Tiene campo comision_mecanico?:", 'comision_mecanico' in trabajos[0])
+        console.log("🔍 ¿Tiene campo mecanico_id?:", 'mecanico_id' in trabajos[0])
+        console.log("🔍 ¿Tiene campo id_mecanico?:", 'id_mecanico' in trabajos[0])
+        console.log("🔍 ¿Tiene campo mecanico?:", 'mecanico' in trabajos[0])
+        console.log("🔍 ¿Tiene campo mecanico_asignado?:", 'mecanico_asignado' in trabajos[0])
+        console.log("🔍 ¿Tiene campo asignado_a?:", 'asignado_a' in trabajos[0])
+        console.log("🔍 Valor de ganancia:", trabajos[0].ganancia)
+        console.log("🔍 Valor de mano_obra:", trabajos[0].mano_obra)
+        console.log("🔍 Valor de total_gastos:", trabajos[0].total_gastos)
+      }
+      
+              // Transformar datos del backend al formato del frontend
+        const transformedWorkOrders: WorkOrderReport[] = trabajos.map((trabajo: any) => ({
+          id: `WO-${trabajo.id.toString().padStart(3, '0')}`,
+          date: trabajo.fecha,
+          licensePlate: trabajo.matricula_carro,
+          clientName: trabajo.cliente_nombre,
+          description: trabajo.descripcion,
+          income: trabajo.costo,
+          expenses: trabajo.total_gastos,
+          profit: trabajo.ganancia,
+          manoObra: trabajo.mano_obra || 0, // ✅ Agregado: Mano de obra del trabajo
+          // Agregar campo de comisión si existe en el backend
+          comision: trabajo.comision || trabajo.comision_mecanico || 0,
+          // ✅ NUEVO: Usar los campos de mecánicos del backend
+          mechanicId: trabajo.mecanicos_ids && trabajo.mecanicos_ids.length > 0 ? trabajo.mecanicos_ids[0] : null, // Primer mecánico asignado
+          mecanicosIds: trabajo.mecanicos_ids || [], // Lista completa de IDs de mecánicos
+          mecanicosNombres: trabajo.mecanicos_nombres || [], // Lista de nombres de mecánicos
+          totalMecanicos: trabajo.total_mecanicos || 0, // Total de mecánicos asignados
+        }))
 
       setWorkOrdersReport(transformedWorkOrders)
 
@@ -440,6 +630,51 @@ export function ReportsSection() {
   // Obtener trabajos del mes seleccionado
   const filteredWorkOrders = getWorkOrdersForSelectedMonth()
 
+  // Cargar estadísticas de mecánicos para el mes seleccionado
+  const loadEstadisticasMecanicos = async () => {
+    if (!selectedYear || !selectedMonth) return
+    
+    try {
+      console.log("🔧 Cargando estadísticas de mecánicos para:", selectedYear, selectedMonth)
+      
+      // Obtener todos los mecánicos disponibles
+      const responseMecanicos = await fetch("http://localhost:8000/api/mecanicos/")
+      if (responseMecanicos.ok) {
+        const mecanicos = await responseMecanicos.json()
+        const estadisticasMap = new Map<string, any>()
+        
+        console.log("🔍 Mecánicos disponibles:", mecanicos)
+        
+        for (const mecanico of mecanicos) {
+          try {
+            // Obtener estadísticas del mes seleccionado
+            const mesParam = `${selectedYear}-${selectedMonth.split('-')[1]}`
+            const response = await fetch(`http://localhost:8000/api/mecanicos/${mecanico.id}/estadisticas?mes=${mesParam}`)
+            if (response.ok) {
+              const stats = await response.json()
+              estadisticasMap.set(mecanico.id.toString(), stats)
+              console.log(`💰 Estadísticas para mecánico ${mecanico.id} (${mecanico.nombre}) en ${mesParam}:`, stats)
+            } else {
+              console.warn(`⚠️ Error ${response.status} al obtener estadísticas para mecánico ${mecanico.id}`)
+            }
+          } catch (error) {
+            console.warn(`⚠️ No se pudieron cargar estadísticas para mecánico ${mecanico.id}:`, error)
+          }
+        }
+        
+        setEstadisticasMecanicos(estadisticasMap)
+        console.log("💰 Estadísticas de mecánicos cargadas:", estadisticasMap)
+        console.log("💰 Contenido del Map:", Object.fromEntries(estadisticasMap))
+      } else {
+        console.warn("⚠️ No se pudieron cargar los mecánicos")
+        setEstadisticasMecanicos(new Map())
+      }
+    } catch (error) {
+      console.warn("⚠️ No se pudieron cargar las estadísticas de mecánicos:", error)
+      setEstadisticasMecanicos(new Map())
+    }
+  }
+
   // Cargar datos al montar el componente
   useEffect(() => {
     if (isAuthenticated) {
@@ -450,6 +685,84 @@ export function ReportsSection() {
       setInitialLoading(false)
     }
   }, [isAuthenticated])
+
+  // Efecto para manejar el reset automático de reportes
+  useEffect(() => {
+    if (shouldReset || isNewMonth) {
+      console.log('🔄 Reset mensual detectado - Limpiando reportes')
+      
+      // Resetear a mes actual
+      const now = new Date()
+      const currentYear = now.getFullYear()
+      const currentMonth = now.getMonth() + 1
+      
+      setSelectedYear(currentYear.toString())
+      setSelectedMonth(`${currentYear}-${String(currentMonth).padStart(2, '0')}`)
+      
+      // Limpiar datos localmente
+      setMonthlyReports([])
+      setWorkOrdersReport([])
+      setCurrentReport(null)
+      setPreviousReport(null)
+      setMecanicosResumen([])
+      setEstadisticasMecanicos(new Map())
+      
+      // Recargar datos del nuevo mes
+      if (isAuthenticated) {
+        loadReportsData()
+      }
+    }
+  }, [shouldReset, isNewMonth, isAuthenticated, loadReportsData])
+
+  // Escuchar eventos de reset manual
+  useEffect(() => {
+    const handleMonthlyReset = () => {
+      console.log('🔄 Reset manual ejecutado - Limpiando reportes')
+      
+      // Resetear a mes actual
+      const now = new Date()
+      const currentYear = now.getFullYear()
+      const currentMonth = now.getMonth() + 1
+      
+      setSelectedYear(currentYear.toString())
+      setSelectedMonth(`${currentYear}-${String(currentMonth).padStart(2, '0')}`)
+      
+      // Limpiar datos localmente
+      setMonthlyReports([])
+      setWorkOrdersReport([])
+      setCurrentReport(null)
+      setPreviousReport(null)
+      setMecanicosResumen([])
+      setEstadisticasMecanicos(new Map())
+      
+      // Recargar datos del nuevo mes
+      if (isAuthenticated) {
+        loadReportsData()
+      }
+    }
+
+    window.addEventListener('monthlyReset', handleMonthlyReset)
+    return () => window.removeEventListener('monthlyReset', handleMonthlyReset)
+  }, [isAuthenticated, loadReportsData])
+
+  // Cargar estadísticas de mecánicos cuando cambie el mes seleccionado
+  useEffect(() => {
+    if (selectedYear && selectedMonth && isAuthenticated) {
+      console.log("🔄 useEffect: Cargando estadísticas para:", selectedYear, selectedMonth)
+      loadEstadisticasMecanicos()
+    }
+  }, [selectedYear, selectedMonth, isAuthenticated])
+  
+  // Cargar resumen de mecánicos cuando cambie el mes seleccionado
+  useEffect(() => {
+    if (selectedYear && selectedMonth && isAuthenticated) {
+      const cargarMecanicos = async () => {
+        const mecanicos = await getMecanicosResumen()
+        setMecanicosResumen(mecanicos)
+      }
+      cargarMecanicos()
+    }
+  }, [selectedYear, selectedMonth, isAuthenticated])
 
   // Actualizar mes seleccionado cuando cambie el año
   useEffect(() => {
@@ -509,7 +822,8 @@ export function ReportsSection() {
     ? calculatePercentageChange(currentReport.netProfit, previousReport.netProfit)
     : 0
 
-  // Si no está autenticado, mostrar solo el modal
+  // Si no está autenticado, mostrar solo el modal - TEMPORALMENTE DESACTIVADO PARA DEBUG
+  /*
   if (!isAuthenticated) {
     console.log("🔒 Usuario no autenticado, mostrando modal")
     return (
@@ -574,6 +888,7 @@ export function ReportsSection() {
       </Dialog>
     )
   }
+  */
 
   // Mostrar estado de carga o error
   if (loading) {
@@ -857,7 +1172,7 @@ export function ReportsSection() {
                     <TableHead className="px-2 sm:px-4 text-xs sm:text-sm">Mes</TableHead>
                     <TableHead className="px-2 sm:px-4 text-xs sm:text-sm">Ingresos</TableHead>
                     <TableHead className="px-2 sm:px-4 text-xs sm:text-sm hidden sm:table-cell">Gastos Repuestos</TableHead>
-                    <TableHead className="px-2 sm:px-4 text-xs sm:text-sm hidden lg:table-cell">Otros Gastos</TableHead>
+                    <TableHead className="px-2 sm:px-4 text-xs sm:text-sm hidden lg:table-cell">Gastos Taller</TableHead>
                     <TableHead className="px-2 sm:px-4 text-xs sm:text-sm">Ganancia</TableHead>
                     <TableHead className="px-2 sm:px-4 text-xs sm:text-sm hidden md:table-cell">Margen</TableHead>
                   </TableRow>
@@ -904,7 +1219,8 @@ export function ReportsSection() {
             )}
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Resumen de salarios, comisiones y ganancias por mecánico en el mes seleccionado
+            Resumen de salarios, comisiones y ganancias por mecánico en el mes seleccionado. 
+            La ganancia base se calcula como: Mano de Obra - Gastos Reales de Repuestos
           </p>
         </CardHeader>
         <CardContent className="p-0 sm:p-6 sm:pt-0">
@@ -916,13 +1232,13 @@ export function ReportsSection() {
                     <TableHead className="px-2 sm:px-4 text-xs sm:text-sm">Mecánico</TableHead>
                     <TableHead className="px-2 sm:px-4 text-xs sm:text-sm hidden sm:table-cell">Total Salarial</TableHead>
                     <TableHead className="px-2 sm:px-4 text-xs sm:text-sm hidden md:table-cell">Total Comisiones</TableHead>
-                    <TableHead className="px-2 sm:px-4 text-xs sm:text-sm hidden lg:table-cell">Total Ganancia Base</TableHead>
+                    <TableHead className="px-2 sm:px-4 text-xs sm:text-sm hidden lg:table-cell">Ganancia Base</TableHead>
                     <TableHead className="px-2 sm:px-4 text-xs sm:text-sm">Margen de Ganancia</TableHead>
                     <TableHead className="px-2 sm:px-4 text-xs sm:text-sm text-center">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {getMecanicosResumen().map((mecanico) => (
+                  {mecanicosResumen.map((mecanico) => (
                     <TableRow key={mecanico.id} className="hover:bg-gray-50">
                       <TableCell className="font-medium px-2 sm:px-4 text-xs sm:text-sm">
                         {mecanico.nombre}
@@ -1189,9 +1505,8 @@ export function ReportsSection() {
                         <TableHead className="px-3 py-2 text-xs">Placa</TableHead>
                         <TableHead className="px-3 py-2 text-xs">Cliente</TableHead>
                         <TableHead className="px-3 py-2 text-xs">Descripción</TableHead>
-                        <TableHead className="px-3 py-2 text-xs">Ganancia</TableHead>
+                        <TableHead className="px-3 py-2 text-xs">Ganancia Base</TableHead>
                         <TableHead className="px-3 py-2 text-xs">Comisión</TableHead>
-                        <TableHead className="px-3 py-2 text-xs">Salario</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1205,14 +1520,13 @@ export function ReportsSection() {
                             <TableCell className="px-3 py-2 text-xs max-w-[150px] truncate">{trabajo.descripcion}</TableCell>
                             <TableCell className="px-3 py-2 text-xs font-medium text-green-600">{formatCurrency(trabajo.ganancia)}</TableCell>
                             <TableCell className="px-3 py-2 text-xs font-medium text-blue-600">{formatCurrency(trabajo.comision)}</TableCell>
-                            <TableCell className="px-3 py-2 text-xs font-medium text-red-600">{formatCurrency(trabajo.salario)}</TableCell>
                           </TableRow>
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                            No hay trabajos para este mecánico en el período seleccionado
-                          </TableCell>
+                                                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          No hay trabajos para este mecánico en el período seleccionado
+                        </TableCell>
                         </TableRow>
                       )}
                     </TableBody>

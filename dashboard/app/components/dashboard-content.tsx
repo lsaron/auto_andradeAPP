@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Car, ClipboardList, Users, Calendar, TrendingUp, TrendingDown, Building2 } from "lucide-react"
+import { MonthlyResetBanner } from "./monthly-reset-banner"
+import { useMonthlyReset } from "@/hooks/use-monthly-reset"
 
 interface DashboardStats {
   totalVehicles: number
@@ -34,6 +36,18 @@ export function DashboardContent() {
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
+  // Hook para manejar el reset mensual automático
+  const {
+    isNewMonth,
+    shouldReset,
+    executeReset,
+    checkNewMonth
+  } = useMonthlyReset({
+    autoReset: true,
+    resetDay: 1, // Reset el día 1 de cada mes
+    preserveHistory: true
+  })
 
   const currentDate = new Date()
   const formattedDate = currentDate.toLocaleDateString("es-CR", {
@@ -47,6 +61,18 @@ export function DashboardContent() {
     hour: "2-digit",
     minute: "2-digit",
   })
+
+  // Función para resetear datos del dashboard
+  const resetDashboardData = () => {
+    setStats({
+      totalVehicles: 0,
+      totalWorkOrders: 0,
+      totalClients: 0,
+      totalRevenue: 0,
+      recentWorkOrders: [],
+      vehiclesByBrand: [],
+    })
+  }
 
   // Load dashboard data from API
   const loadDashboardData = async () => {
@@ -118,6 +144,31 @@ export function DashboardContent() {
     loadDashboardData()
   }, [])
 
+  // Efecto para manejar el reset automático
+  useEffect(() => {
+    if (shouldReset || isNewMonth) {
+      console.log('🔄 Reset mensual detectado - Limpiando dashboard')
+      resetDashboardData()
+      
+      // Si es reset automático, mostrar mensaje
+      if (shouldReset) {
+        console.log('🔄 Ejecutando reset automático del dashboard')
+        // Aquí podrías mostrar una notificación al usuario
+      }
+    }
+  }, [shouldReset, isNewMonth, resetDashboardData])
+
+  // Escuchar eventos de reset manual
+  useEffect(() => {
+    const handleMonthlyReset = () => {
+      console.log('🔄 Reset manual ejecutado - Limpiando dashboard')
+      resetDashboardData()
+    }
+
+    window.addEventListener('monthlyReset', handleMonthlyReset)
+    return () => window.removeEventListener('monthlyReset', handleMonthlyReset)
+  }, [resetDashboardData])
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("es-CR", {
       style: "currency",
@@ -170,6 +221,13 @@ export function DashboardContent() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      {/* Monthly Reset Banner */}
+      <MonthlyResetBanner 
+        showCountdown={true}
+        showResetButton={true}
+        className="mb-4"
+      />
+      
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="space-y-2">

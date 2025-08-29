@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import clientes, carros, trabajos, historial_duenos, detalle_gastos, reportes, mecanicos, auth, gastos_taller, pagos_salarios
+from app.routes import clientes, carros, trabajos, historial_duenos, detalle_gastos, reportes, mecanicos, gastos_taller, pagos_salarios
+# from app.routes import auth  # TEMPORALMENTE DESACTIVADO PARA DEBUG
 
 app = FastAPI()
 
@@ -21,7 +22,7 @@ app.include_router(historial_duenos.router, prefix="/api")
 app.include_router(detalle_gastos.router, prefix="/api")
 app.include_router(reportes.router, prefix="/api")
 app.include_router(mecanicos.router, prefix="/api")
-app.include_router(auth.router, prefix="/api")
+# app.include_router(auth.router, prefix="/api")  # TEMPORALMENTE DESACTIVADO PARA DEBUG
 app.include_router(gastos_taller.router, prefix="/api")
 app.include_router(pagos_salarios.router, prefix="/api")
 
