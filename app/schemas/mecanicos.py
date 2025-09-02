@@ -5,6 +5,7 @@ from decimal import Decimal
 
 # Schema base para Mecánico
 class MecanicoBase(BaseModel):
+    id_nacional: str = Field(..., min_length=1, max_length=20, description="ID nacional del mecánico")
     nombre: str = Field(..., min_length=1, max_length=100, description="Nombre completo del mecánico")
     telefono: Optional[str] = Field(None, max_length=20, description="Número de teléfono")
     fecha_contratacion: Optional[date] = Field(None, description="Fecha de contratación")
@@ -27,6 +28,9 @@ class Mecanico(MecanicoBase):
 
     class Config:
         from_attributes = True
+
+# Alias para compatibilidad
+MecanicoSchema = Mecanico
 
 # Schema para mecánico con estadísticas
 class MecanicoConEstadisticas(Mecanico):

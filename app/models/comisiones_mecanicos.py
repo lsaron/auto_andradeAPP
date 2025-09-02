@@ -9,6 +9,7 @@ class EstadoComision(str, enum.Enum):
     PENDIENTE = "PENDIENTE"
     APROBADA = "APROBADA"
     PENALIZADA = "PENALIZADA"
+    DENEGADA = "DENEGADA"
 
 class ComisionMecanico(Base):
     __tablename__ = "comisiones_mecanicos"

@@ -31,8 +31,22 @@ import type { Mechanic, MechanicCreate } from "@/lib/types"
 import { mecanicosApi } from "@/lib/api-client"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { ErrorMessage } from "@/components/ui/error-message"
+import { useMonthlyReset } from "@/hooks/use-monthly-reset"
 
 export function MechanicsSection() {
+  // Hook para reset mensual automático
+  const {
+    currentMonth,
+    currentYear,
+    isMondayStartOfMonth,
+    shouldShowResetBanner,
+    executeReset
+  } = useMonthlyReset({
+    autoReset: true,
+    resetDay: 1, // Reset el primer día del mes
+    preserveHistory: true
+  })
+
   const [mechanics, setMechanics] = useState<Mechanic[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -51,58 +65,7 @@ export function MechanicsSection() {
     name: "",
   })
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  const [quincenaActual, setQuincenaActual] = useState<number>(0)
-  const [proximaActualizacion, setProximaActualizacion] = useState<Date | null>(null)
-  const [mostrarSoloQuincenaActual, setMostrarSoloQuincenaActual] = useState(false)
 
-  const calcularQuincenaActual = useCallback(() => {
-    const fechaActual = new Date()
-    const dia = fechaActual.getDate()
-    const mes = fechaActual.getMonth() + 1 // getMonth() es 0-11
-    const anio = fechaActual.getFullYear()
-
-    if (dia <= 15) {
-      return 1
-    } else {
-      return 2
-    }
-  }, [])
-
-  const calcularProximoLunesQuincena = useCallback(() => {
-    const fechaActual = new Date()
-    const dia = fechaActual.getDate()
-    const mes = fechaActual.getMonth() + 1 // getMonth() es 0-11
-    const anio = fechaActual.getFullYear()
-
-    if (dia <= 15) {
-      // Si la fecha actual es 15 o antes, la próxima actualización es el 15 del mes siguiente
-      return new Date(anio, mes, 15)
-    } else {
-      // Si la fecha actual es 16 o después, la próxima actualización es el 15 del mes actual
-      return new Date(anio, mes, 15)
-    }
-  }, [])
-
-  useEffect(() => {
-    // Inicializar quincena actual
-    const quincena = calcularQuincenaActual()
-    setQuincenaActual(quincena)
-    
-    // Calcular próxima actualización
-    const proxima = calcularProximoLunesQuincena()
-    setProximaActualizacion(proxima)
-    
-    console.log("📅 Sistema de quincenas inicializado:")
-    console.log("   - Quincena actual:", quincena)
-    console.log("   - Próxima actualización:", proxima.toLocaleDateString())
-    
-    // Verificar si es momento de actualizar (cada lunes después de quincena)
-    const ahora = new Date()
-    if (ahora.getDay() === 1 && ahora >= proxima) {
-      console.log("🔄 Es lunes después de quincena - Actualizando datos...")
-      setMostrarSoloQuincenaActual(true)
-    }
-  }, [calcularQuincenaActual, calcularProximoLunesQuincena])
 
   type MechanicJob = {
     id: number
@@ -122,25 +85,83 @@ export function MechanicsSection() {
   
   const [mechanicJobs, setMechanicJobs] = useState<MechanicJob[]>([])
   const [loadingJobs, setLoadingJobs] = useState(false)
-  const [selectedYear, setSelectedYear] = useState<string>("")
-  const [selectedMonth, setSelectedMonth] = useState<string>("")
-  const [availableYears, setAvailableYears] = useState<string[]>([])
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth())
+  const [availableYears, setAvailableYears] = useState<number[]>([])
+  const [isCurrentPeriod, setIsCurrentPeriod] = useState(true)
   const [availableMonths] = useState([
-    { value: "01", label: "Enero" },
-    { value: "02", label: "Febrero" },
-    { value: "03", label: "Marzo" },
-    { value: "04", label: "Abril" },
-    { value: "05", label: "Mayo" },
-    { value: "06", label: "Junio" },
-    { value: "07", label: "Julio" },
-    { value: "08", label: "Agosto" },
-    { value: "09", label: "Septiembre" },
-    { value: "10", label: "Octubre" },
-    { value: "11", label: "Noviembre" },
-    { value: "12", label: "Diciembre" }
+    { value: 0, label: "Enero" },
+    { value: 1, label: "Febrero" },
+    { value: 2, label: "Marzo" },
+    { value: 3, label: "Abril" },
+    { value: 4, label: "Mayo" },
+    { value: 5, label: "Junio" },
+    { value: 6, label: "Julio" },
+    { value: 7, label: "Agosto" },
+    { value: 8, label: "Septiembre" },
+    { value: 9, label: "Octubre" },
+    { value: 10, label: "Noviembre" },
+    { value: 11, label: "Diciembre" }
   ])
 
+  // Función para obtener años disponibles
+  const obtenerAnosDisponibles = useCallback(() => {
+    const anoActual = new Date().getFullYear()
+    const anos = []
+    for (let i = anoActual - 2; i <= anoActual + 1; i++) {
+      anos.push(i)
+    }
+    setAvailableYears(anos)
+  }, [])
+
+  // Función para verificar si es período actual
+  const verificarPeriodoActual = useCallback(() => {
+    const fechaActual = new Date()
+    const anoActual = fechaActual.getFullYear()
+    const mesActual = fechaActual.getMonth()
+    
+    const esPeriodoActual = selectedYear === anoActual && selectedMonth === mesActual
+    setIsCurrentPeriod(esPeriodoActual)
+    
+    console.log("📅 Verificando período actual:", {
+      selectedYear,
+      selectedMonth,
+      anoActual,
+      mesActual,
+      esPeriodoActual
+    })
+  }, [selectedYear, selectedMonth])
+
+  // Función para resetear al período actual
+  const resetearAPeriodoActual = useCallback(() => {
+    const fechaActual = new Date()
+    setSelectedYear(fechaActual.getFullYear())
+    setSelectedMonth(fechaActual.getMonth())
+    setIsCurrentPeriod(true)
+  }, [])
+
   // Cargar mecánicos desde la API
+  useEffect(() => {
+    obtenerAnosDisponibles()
+  }, [obtenerAnosDisponibles])
+
+  useEffect(() => {
+    verificarPeriodoActual()
+  }, [verificarPeriodoActual])
+
+  // Manejar reset mensual automático
+  useEffect(() => {
+    const handleMonthlyReset = () => {
+      console.log("🔄 Reset mensual automático ejecutado en mechanics-section")
+      resetearAPeriodoActual()
+      // Recargar datos para mostrar solo el período actual
+      reloadMechanics()
+    }
+
+    window.addEventListener('monthlyReset', handleMonthlyReset)
+    return () => window.removeEventListener('monthlyReset', handleMonthlyReset)
+  }, [resetearAPeriodoActual])
+
   useEffect(() => {
     const fetchMechanics = async () => {
       try {
@@ -157,6 +178,7 @@ export function MechanicsSection() {
               console.log(`🔍 Obteniendo estadísticas para mecánico ${mecanico.id}...`)
               const stats = await mecanicosApi.getStats(mecanico.id)
               console.log(`🔍 Estadísticas para mecánico ${mecanico.id}:`, stats)
+              console.log(`🔍 Tipo de stats:`, typeof stats, stats === null, stats === undefined)
               
               const mecanicoMapeado = {
                 id: mecanico.id.toString(),
@@ -447,38 +469,38 @@ export function MechanicsSection() {
           console.log(`🔍 Procesando ${jobsWithDetails.length} trabajos con detalles`)
           
           // Extraer años únicos de los trabajos para el filtro
-          const yearsSet = new Set<string>(jobsWithDetails.map((job: any) => 
-            new Date(job.fecha as string).getFullYear().toString()
+          const yearsSet = new Set<number>(jobsWithDetails.map((job: any) => 
+            new Date(job.fecha as string).getFullYear()
           ))
-          const years = Array.from(yearsSet).sort((a: string, b: string) => parseInt(b) - parseInt(a))
+          const years = Array.from(yearsSet).sort((a: number, b: number) => b - a)
           console.log(`🔍 Años disponibles:`, years)
           setAvailableYears(years)
           
           // Por defecto, mostrar todos los trabajos (sin filtros)
           console.log(`🔍 Estableciendo filtros por defecto: mostrar todos los trabajos`)
-          setSelectedYear("")
-          setSelectedMonth("")
+          setSelectedYear(new Date().getFullYear())
+          setSelectedMonth(new Date().getMonth())
         } else {
           console.log(`🔍 No hay trabajos disponibles`)
           // Si no hay trabajos, limpiar filtros
           setAvailableYears([])
-          setSelectedYear("")
-          setSelectedMonth("")
+          setSelectedYear(new Date().getFullYear())
+          setSelectedMonth(new Date().getMonth())
         }
       } else {
         const errorText = await response.text()
         console.error(`❌ Error al obtener trabajos del mecánico: ${response.status} - ${errorText}`)
         setMechanicJobs([])
         setAvailableYears([])
-        setSelectedYear("")
-        setSelectedMonth("")
+        setSelectedYear(new Date().getFullYear())
+        setSelectedMonth(new Date().getMonth())
       }
     } catch (error) {
       console.error("Error al obtener trabajos del mecánico:", error)
       setMechanicJobs([])
       setAvailableYears([])
-      setSelectedYear("")
-      setSelectedMonth("")
+      setSelectedYear(new Date().getFullYear())
+      setSelectedMonth(new Date().getMonth())
     } finally {
       setLoadingJobs(false)
     }
@@ -494,27 +516,27 @@ export function MechanicsSection() {
     })
     
     // Si no hay filtros seleccionados, mostrar todos los trabajos
-    if (!selectedYear && !selectedMonth) {
-      console.log(`🔍 Sin filtros: mostrando todos los ${mechanicJobs.length} trabajos`)
+    if (selectedYear === new Date().getFullYear() && selectedMonth === new Date().getMonth()) {
+      console.log(`🔍 Período actual: mostrando todos los ${mechanicJobs.length} trabajos`)
       return mechanicJobs
     }
     
     const filtered = mechanicJobs.filter((job) => {
       try {
         const jobDate = new Date(job.fecha as string)
-        const jobYear = jobDate.getFullYear().toString()
-        const jobMonth = (jobDate.getMonth() + 1).toString().padStart(2, '0')
+        const jobYear = jobDate.getFullYear()
+        const jobMonth = jobDate.getMonth()
         
         // Si solo hay año seleccionado, filtrar por año
-        if (selectedYear && !selectedMonth) {
+        if (selectedYear !== new Date().getFullYear() && selectedMonth === new Date().getMonth()) {
           const matches = jobYear === selectedYear
           console.log(`🔍 Trabajo ${job.matricula_carro} - Año: ${jobYear}, Filtro: ${selectedYear}, Coincide: ${matches}`)
           return matches
         }
         
         // Si solo hay mes seleccionado, filtrar por mes del año actual
-        if (!selectedYear && selectedMonth) {
-          const currentYear = new Date().getFullYear().toString()
+        if (selectedYear === new Date().getFullYear() && selectedMonth !== new Date().getMonth()) {
+          const currentYear = new Date().getFullYear()
           const matches = jobYear === currentYear && jobMonth === selectedMonth
           console.log(`🔍 Trabajo ${job.matricula_carro} - Año: ${jobYear}, Mes: ${jobMonth}, Filtro: ${selectedMonth}, Coincide: ${matches}`)
           return matches
@@ -538,10 +560,7 @@ export function MechanicsSection() {
     return filtered
   }, [mechanicJobs, selectedYear, selectedMonth, availableYears])
 
-  const toggleVisualizacionQuincena = useCallback(() => {
-    setMostrarSoloQuincenaActual(!mostrarSoloQuincenaActual)
-    console.log(`🔄 Cambiando visualización a: ${mostrarSoloQuincenaActual ? "Solo Quincena Actual" : "Histórico"}`)
-  }, [mostrarSoloQuincenaActual])
+
 
   if (loading && mechanics.length === 0) {
     return (
@@ -565,31 +584,46 @@ export function MechanicsSection() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Mecánicos</h1>
-          <p className="text-muted-foreground">Gestiona la información de los mecánicos del taller</p>
-        </div>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={reloadMechanics} 
-            disabled={loading}
-            className="min-w-[120px]"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Actualizando...' : 'Actualizar'}
-          </Button>
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                Nuevo Mecánico
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="bg-white">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/50">
+      <div className="space-y-8 p-6">
+        {/* Header con gradiente y sombras */}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-8 text-white shadow-2xl">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-600/90 via-indigo-600/90 to-purple-600/90"></div>
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-32 translate-x-32"></div>
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-24 -translate-x-24"></div>
+          <div className="relative z-10">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+              <div className="space-y-3">
+                <div className="flex items-center gap-4">
+                  <div className="p-4 bg-white/20 rounded-2xl backdrop-blur-sm shadow-lg">
+                    <UserCog className="h-8 w-8 text-white" />
+                  </div>
+                  <div>
+                    <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent">
+                      Mecánicos
+                    </h1>
+                    <p className="text-blue-100 text-lg font-medium">Gestiona la información de los mecánicos del taller</p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <Button 
+                  variant="secondary" 
+                  onClick={reloadMechanics} 
+                  disabled={loading}
+                  className="min-w-[140px] bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-300"
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                  {loading ? 'Actualizando...' : 'Actualizar'}
+                </Button>
+                <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="flex items-center gap-2 bg-white text-blue-600 hover:bg-blue-50 shadow-lg hover:shadow-xl transition-all duration-300 font-semibold">
+                      <Plus className="h-4 w-4" />
+                      Nuevo Mecánico
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="bg-white">
               <DialogHeader>
                 <DialogTitle>Crear Nuevo Mecánico</DialogTitle>
                 <DialogDescription>Ingresa la información del nuevo mecánico</DialogDescription>
@@ -620,123 +654,176 @@ export function MechanicsSection() {
                 </Button>
                 <Button onClick={handleCreateMechanic}>Crear Mecánico</Button>
               </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Statistics Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Mecánicos</CardTitle>
-            <UserCog className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {loading ? (
-                <div className="flex items-center gap-2">
-                  <LoadingSpinner size="sm" />
-                  <span className="text-sm text-muted-foreground">Actualizando...</span>
-                </div>
-              ) : (
-                stats.totalMechanics
-              )}
+        {/* Banner de Reset Mensual */}
+        {shouldShowResetBanner && (
+          <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white p-4 rounded-2xl shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-white/20 rounded-lg">
+                <Calendar className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Reset Mensual Próximo</h3>
+                <p className="text-sm text-amber-100">
+                  Los datos se resetearán automáticamente el primer lunes del próximo mes
+                </p>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Trabajos Completados</CardTitle>
-            <Wrench className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {loading ? (
-                <div className="flex items-center gap-2">
-                  <LoadingSpinner size="sm" />
-                  <span className="text-sm text-muted-foreground">Actualizando...</span>
-                </div>
-              ) : (
-                stats.totalJobs
-              )}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Comisiones Totales</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {loading ? (
-                <div className="flex items-center gap-2">
-                  <LoadingSpinner size="sm" />
-                  <span className="text-sm text-muted-foreground">Actualizando...</span>
-                </div>
-              ) : (
-                `₡${stats.totalCommissions.toLocaleString()}`
-              )}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Estados Comisión</CardTitle>
-            <UserCog className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {loading ? (
-                <div className="flex items-center gap-2">
-                  <LoadingSpinner size="sm" />
-                  <span className="text-sm text-muted-foreground">Actualizando...</span>
-                </div>
-              ) : (
-                <>
-
-                </>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Información de actualización */}
-      {lastUpdated && (
-        <div className="text-center text-sm text-muted-foreground">
-          <p>
-            📊 Estadísticas actualizadas por última vez: {lastUpdated.toLocaleString('es-ES')}
-          </p>
-          <p className="text-xs mt-1">
-            Las comisiones se calculan al 2% sobre la ganancia base (Mano de Obra - Costos Reales)
-          </p>
-        </div>
-      )}
-
-      {/* Search */}
-      <div className="flex items-center space-x-2">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar mecánicos por nombre o ID..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
-        />
-        {searchTerm && (
-          <Badge variant="secondary">
-            {filteredMechanics.length} resultado{filteredMechanics.length !== 1 ? "s" : ""}
-          </Badge>
+          </div>
         )}
-      </div>
 
-     {/* Mechanics Table */}
-      <Card>
-                 <CardHeader>
-           <CardTitle>Lista de Mecánicos</CardTitle>
-           <CardDescription>Información detallada de todos los mecánicos registrados</CardDescription>
-         </CardHeader>
+        {/* Statistics Cards con diseño moderno */}
+        <div className="grid gap-6 md:grid-cols-3">
+          <Card className="relative overflow-hidden border-0 shadow-xl bg-gradient-to-br from-blue-500 to-blue-600 text-white hover:shadow-2xl transition-all duration-300 hover:scale-105 group">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
+            <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/5 rounded-full translate-y-10 -translate-x-10"></div>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
+              <CardTitle className="text-sm font-medium text-blue-100">Total Mecánicos</CardTitle>
+              <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm shadow-lg">
+                <UserCog className="h-5 w-5 text-white" />
+              </div>
+            </CardHeader>
+            <CardContent className="relative z-10">
+              <div className="text-3xl font-bold mb-2">
+                {loading ? (
+                  <div className="flex items-center gap-2">
+                    <LoadingSpinner size="sm" />
+                    <span className="text-sm text-blue-100">Actualizando...</span>
+                  </div>
+                ) : (
+                  stats.totalMechanics
+                )}
+              </div>
+              <p className="text-blue-100 text-sm font-medium">Mecánicos registrados</p>
+            </CardContent>
+          </Card>
+
+          <Card className="relative overflow-hidden border-0 shadow-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white hover:shadow-2xl transition-all duration-300 hover:scale-105 group">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
+            <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/5 rounded-full translate-y-10 -translate-x-10"></div>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
+              <CardTitle className="text-sm font-medium text-emerald-100">Trabajos Completados</CardTitle>
+              <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm shadow-lg">
+                <Wrench className="h-5 w-5 text-white" />
+              </div>
+            </CardHeader>
+            <CardContent className="relative z-10">
+              <div className="text-3xl font-bold mb-2">
+                {loading ? (
+                  <div className="flex items-center gap-2">
+                    <LoadingSpinner size="sm" />
+                    <span className="text-sm text-emerald-100">Actualizando...</span>
+                  </div>
+                ) : (
+                  stats.totalJobs
+                )}
+              </div>
+              <p className="text-emerald-100 text-sm font-medium">Trabajos realizados</p>
+            </CardContent>
+          </Card>
+
+          <Card className="relative overflow-hidden border-0 shadow-xl bg-gradient-to-br from-purple-500 to-purple-600 text-white hover:shadow-2xl transition-all duration-300 hover:scale-105 group">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-16 translate-x-16 group-hover:scale-110 transition-transform duration-500"></div>
+            <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/5 rounded-full translate-y-10 -translate-x-10"></div>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
+              <CardTitle className="text-sm font-medium text-purple-100">Comisiones Totales</CardTitle>
+              <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm shadow-lg">
+                <DollarSign className="h-5 w-5 text-white" />
+              </div>
+            </CardHeader>
+            <CardContent className="relative z-10">
+              <div className="text-3xl font-bold mb-2">
+                {loading ? (
+                  <div className="flex items-center gap-2">
+                    <LoadingSpinner size="sm" />
+                    <span className="text-sm text-purple-100">Actualizando...</span>
+                  </div>
+                ) : (
+                  `₡${stats.totalCommissions.toLocaleString()}`
+                )}
+              </div>
+              <p className="text-purple-100 text-sm font-medium">Comisiones pagadas</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Información de actualización con diseño mejorado */}
+        {lastUpdated && (
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-white/20 shadow-lg">
+            <div className="text-center space-y-3">
+              <div className="flex items-center justify-center gap-3 text-sm text-slate-600">
+                <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse shadow-lg"></div>
+                <span className="font-semibold">Estadísticas actualizadas por última vez:</span>
+                <span className="text-slate-800 font-bold bg-slate-100 px-3 py-1 rounded-full">
+                  {lastUpdated.toLocaleString('es-ES')}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 bg-slate-50 px-4 py-2 rounded-lg border border-slate-200">
+                💡 Las comisiones se calculan al 2% sobre la ganancia base (Mano de Obra - Costos Reales)
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Search con diseño mejorado */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-white/20 shadow-lg">
+          <div className="flex items-center space-x-4">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400" />
+              <Input
+                placeholder="Buscar mecánicos por nombre o ID..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-12 h-12 bg-white/50 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl text-base"
+              />
+            </div>
+            {searchTerm && (
+              <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200 px-4 py-2 text-sm font-medium">
+                {filteredMechanics.length} resultado{filteredMechanics.length !== 1 ? "s" : ""}
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        {/* Mechanics Table con diseño mejorado */}
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+          <CardHeader className="bg-gradient-to-r from-slate-50 to-slate-100 rounded-t-xl border-b border-slate-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <UserCog className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl font-bold text-slate-800">Lista de Mecánicos</CardTitle>
+                  <CardDescription className="text-slate-600 font-medium">
+                    Información detallada de todos los mecánicos registrados
+                    {!isCurrentPeriod && (
+                      <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800 border-amber-200">
+                        Datos Históricos
+                      </Badge>
+                    )}
+                  </CardDescription>
+                </div>
+              </div>
+              {!isCurrentPeriod && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={resetearAPeriodoActual}
+                  className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Ver Período Actual
+                </Button>
+              )}
+            </div>
+          </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-8">
@@ -758,25 +845,35 @@ export function MechanicsSection() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredMechanics.map((mechanic) => (
-                  <TableRow key={mechanic.id}>
+                {filteredMechanics.map((mechanic, index) => (
+                  <TableRow key={mechanic.id} className="hover:bg-slate-50/50 transition-colors duration-200">
                     <TableCell>
-                      <Badge variant="outline">{mechanic.mechanic_id}</Badge>
+                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-semibold">
+                        {mechanic.mechanic_id}
+                      </Badge>
                     </TableCell>
-                    <TableCell className="font-medium">{mechanic.name}</TableCell>
+                    <TableCell className="font-semibold text-slate-800">{mechanic.name}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{mechanic.jobs_completed || 0}</Badge>
+                      <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 border-emerald-200 font-semibold">
+                        {mechanic.jobs_completed || 0}
+                      </Badge>
                     </TableCell>
-                    <TableCell>₡{(mechanic.total_profit || 0).toLocaleString()}</TableCell>
-                    <TableCell>₡{(mechanic.total_commission || 0).toLocaleString()}</TableCell>
-                    <TableCell>{mechanic.hire_date ? new Date(mechanic.hire_date).toLocaleDateString() : 'N/A'}</TableCell>
+                    <TableCell className="font-semibold text-emerald-600">
+                      ₡{(mechanic.total_profit || 0).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="font-semibold text-purple-600">
+                      ₡{(mechanic.total_commission || 0).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-slate-600">
+                      {mechanic.hire_date ? new Date(mechanic.hire_date).toLocaleDateString() : 'N/A'}
+                    </TableCell>
 
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
+                      <div className="flex justify-end gap-2">
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0"
+                          className="h-9 w-9 p-0 hover:bg-blue-100 hover:text-blue-600 transition-colors duration-200"
                           onClick={() => openViewDialog(mechanic)}
                         >
                           <Eye className="h-4 w-4" />
@@ -784,7 +881,7 @@ export function MechanicsSection() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0"
+                          className="h-9 w-9 p-0 hover:bg-emerald-100 hover:text-emerald-600 transition-colors duration-200"
                           onClick={() => openEditDialog(mechanic)}
                         >
                           <Edit className="h-4 w-4" />
@@ -792,7 +889,7 @@ export function MechanicsSection() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700"
+                          className="h-9 w-9 p-0 hover:bg-indigo-100 hover:text-indigo-600 transition-colors duration-200"
                           onClick={() => openJobsDialog(mechanic)}
                         >
                           <Wrench className="h-4 w-4" />
@@ -800,7 +897,7 @@ export function MechanicsSection() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                          className="h-9 w-9 p-0 hover:bg-red-100 hover:text-red-600 transition-colors duration-200"
                           onClick={() => openDeleteDialog(mechanic)}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -817,82 +914,11 @@ export function MechanicsSection() {
               {searchTerm ? "No se encontraron mecánicos con esa búsqueda" : "No hay mecánicos registrados"}
             </div>
           )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+        </div>
 
-      {/* ======================================== */}
-      {/* TARJETA: SISTEMA DE QUINCENAS */}
-      {/* ======================================== */}
-      <Card className="mt-4">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-blue-600" />
-            Sistema de Quincenas Automático
-          </CardTitle>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={toggleVisualizacionQuincena}
-              className="text-xs"
-            >
-              {mostrarSoloQuincenaActual ? "Mostrar Histórico" : "Solo Quincena Actual"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={reloadMechanics}
-              className="text-xs"
-            >
-              <RefreshCw className="h-3 w-3 mr-1" />
-              Actualizar
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {/* Estado actual */}
-            <div className="flex items-center justify-between p-2 bg-blue-50 rounded-lg">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-blue-600" />
-                <span className="text-sm font-medium text-blue-900">Quincena Actual:</span>
-              </div>
-              <Badge variant="default" className="bg-blue-600 text-white">
-                {quincenaActual === 1 ? "Q1 (1-15)" : quincenaActual === 2 ? "Q2 (16-31)" : "Calculando..."}
-              </Badge>
-            </div>
-
-            {/* Próxima actualización */}
-            <div className="flex items-center justify-between p-2 bg-green-50 rounded-lg">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-green-600" />
-                <span className="text-sm font-medium text-green-900">Próxima Actualización:</span>
-              </div>
-              <span className="text-sm text-green-700 font-medium">
-                {proximaActualizacion ? proximaActualizacion.toLocaleDateString('es-ES', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                }) : "Calculando..."}
-              </span>
-            </div>
-
-            {/* Estado de visualización */}
-            <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-orange-600" />
-                <span className="text-sm font-medium text-gray-900">Estado de Visualización:</span>
-              </div>
-              <Badge variant={mostrarSoloQuincenaActual ? "destructive" : "secondary"}>
-                {mostrarSoloQuincenaActual ? "Solo Quincena Actual" : "Mostrando Histórico"}
-              </Badge>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* View Mechanic Dialog */}
+        {/* View Mechanic Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="bg-white max-w-md">
           <DialogHeader>
@@ -1029,6 +1055,11 @@ export function MechanicsSection() {
             <DialogTitle className="text-2xl">Trabajos del Mecánico</DialogTitle>
             <DialogDescription>
               Lista de todos los trabajos realizados por este mecánico
+              {!isCurrentPeriod && (
+                <Badge variant="secondary" className="ml-2 bg-amber-100 text-amber-800 border-amber-200">
+                  Datos Históricos
+                </Badge>
+              )}
             </DialogDescription>
           </DialogHeader>
           
@@ -1107,6 +1138,19 @@ export function MechanicsSection() {
                    </h3>
                    
                    <div className="flex flex-col sm:flex-row gap-3">
+                     {/* Botón para resetear al período actual */}
+                     {!isCurrentPeriod && (
+                       <Button
+                         variant="outline"
+                         size="sm"
+                         onClick={resetearAPeriodoActual}
+                         className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                       >
+                         <RefreshCw className="h-4 w-4 mr-2" />
+                         Período Actual
+                       </Button>
+                     )}
+                     
                      {/* Filtro de año */}
                      <div className="flex flex-col gap-1">
                        <Label htmlFor="year-filter" className="text-sm font-medium text-gray-700">
@@ -1115,10 +1159,10 @@ export function MechanicsSection() {
                        <select
                          id="year-filter"
                          value={selectedYear}
-                         onChange={(e) => setSelectedYear(e.target.value)}
+                         onChange={(e) => setSelectedYear(Number(e.target.value))}
                          className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                        >
-                         <option value="">Todos los años</option>
+                         <option value={new Date().getFullYear()}>Año actual</option>
                          {availableYears.map((year) => (
                            <option key={year} value={year}>
                              {year}
@@ -1135,46 +1179,34 @@ export function MechanicsSection() {
                        <select
                          id="month-filter"
                          value={selectedMonth}
-                         onChange={(e) => setSelectedMonth(e.target.value)}
+                         onChange={(e) => setSelectedMonth(Number(e.target.value))}
                          className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                        >
-                         <option value="">Todos los meses</option>
+                         <option value={new Date().getMonth()}>Mes actual</option>
                          {availableMonths.map((month) => (
                            <option key={month.value} value={month.value}>
                              {month.label}
                            </option>
                          ))}
-                                                </select>
+                       </select>
                        </div>
                        
-                       {/* Botón para limpiar filtros */}
-                       <div className="flex items-end gap-2">
-                         {(selectedYear || selectedMonth) && (
-                           <Button
-                             variant="outline"
-                             size="sm"
-                             onClick={() => {
-                               setSelectedYear("")
-                               setSelectedMonth("")
-                             }}
-                             className="px-3 py-2 h-[42px]"
-                           >
-                             Mostrar Todos
-                           </Button>
-                         )}
-                         <Button
-                           variant="outline"
-                           size="sm"
-                           onClick={() => {
-                             setSelectedYear("")
-                             setSelectedMonth("")
-                           }}
-                           className="px-3 py-2 h-[42px]"
-                           disabled={!selectedYear && !selectedMonth}
-                         >
-                           Limpiar Filtros
-                         </Button>
-                       </div>
+                                                                        {/* Botón para limpiar filtros */}
+                        <div className="flex items-end gap-2">
+                          {(selectedYear !== new Date().getFullYear() || selectedMonth !== new Date().getMonth()) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedYear(new Date().getFullYear())
+                                setSelectedMonth(new Date().getMonth())
+                              }}
+                              className="px-3 py-2 h-[42px]"
+                            >
+                              Período Actual
+                            </Button>
+                          )}
+                        </div>
                      </div>
                    </div>
                 

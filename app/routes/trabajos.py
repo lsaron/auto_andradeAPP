@@ -512,8 +512,8 @@ def cambiar_estado_comision(
             raise HTTPException(status_code=404, detail="Comisión no encontrada")
         
         nuevo_estado = estado_update.get("estado")
-        if nuevo_estado not in ["APROBADA", "PENALIZADA"]:
-            raise HTTPException(status_code=400, detail="Estado inválido. Use: APROBADA o PENALIZADA")
+        if nuevo_estado not in ["APROBADA", "PENALIZADA", "DENEGADA"]:
+            raise HTTPException(status_code=400, detail="Estado inválido. Use: APROBADA, PENALIZADA o DENEGADA")
         
         comision.estado_comision = EstadoComision(nuevo_estado)
         db.commit()
@@ -557,9 +557,16 @@ def obtener_reporte_financiero_comisiones(quincena: str, db: Session = Depends(g
             ComisionMecanico.estado_comision == EstadoComision.PENDIENTE
         ).all()
         
+        # Obtener comisiones denegadas
+        comisiones_denegadas = db.query(ComisionMecanico).filter(
+            ComisionMecanico.quincena == quincena,
+            ComisionMecanico.estado_comision == EstadoComision.DENEGADA
+        ).all()
+        
         total_gastos_comisiones = sum(float(c.monto_comision) for c in comisiones_aprobadas)
         total_ahorro_penalizaciones = sum(float(c.monto_comision) for c in comisiones_penalizadas)
         total_pendiente = sum(float(c.monto_comision) for c in comisiones_pendientes)
+        total_denegadas = sum(float(c.monto_comision) for c in comisiones_denegadas)  # Siempre será 0
         
         return {
             "quincena": quincena,
@@ -569,7 +576,9 @@ def obtener_reporte_financiero_comisiones(quincena: str, db: Session = Depends(g
                 "total_comisiones_penalizadas": len(comisiones_penalizadas),
                 "total_ahorro_penalizaciones": total_ahorro_penalizaciones,
                 "total_comisiones_pendientes": len(comisiones_pendientes),
-                "total_pendiente": total_pendiente
+                "total_pendiente": total_pendiente,
+                "total_comisiones_denegadas": len(comisiones_denegadas),
+                "total_denegadas": total_denegadas
             },
             "comisiones_aprobadas": [
                 {
@@ -584,6 +593,13 @@ def obtener_reporte_financiero_comisiones(quincena: str, db: Session = Depends(g
                     "id_mecanico": c.id_mecanico,
                     "monto_comision": float(c.monto_comision)
                 } for c in comisiones_penalizadas
+            ],
+            "comisiones_denegadas": [
+                {
+                    "id": c.id,
+                    "id_mecanico": c.id_mecanico,
+                    "monto_comision": float(c.monto_comision)
+                } for c in comisiones_denegadas
             ]
         }
         

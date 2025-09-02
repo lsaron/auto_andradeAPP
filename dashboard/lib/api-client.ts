@@ -340,9 +340,8 @@ export const mecanicosApi = {
 
   // Obtener estadísticas de mecánico
   getStats: async (id: number, month?: string): Promise<MechanicConEstadisticas> => {
-    const url = month 
-      ? `${API_BASE_URL}/mecanicos/${id}/estadisticas?mes=${month}`
-      : `${API_BASE_URL}/mecanicos/${id}/estadisticas`
+    // Usar el endpoint correcto que calcula estadísticas en tiempo real
+    const url = `${API_BASE_URL}/mecanicos/${id}/estadisticas${month ? `?mes=${month}` : ''}`
     const response = await fetch(url)
     if (!response.ok) throw new Error('Error al obtener estadísticas')
     return response.json()

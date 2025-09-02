@@ -7,6 +7,7 @@ class EstadoComision(str, Enum):
     PENDIENTE = "PENDIENTE"
     APROBADA = "APROBADA"
     PENALIZADA = "PENALIZADA"
+    DENEGADA = "DENEGADA"
 
 class DetalleGastoSchema(BaseModel):
     descripcion: str

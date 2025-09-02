@@ -36,18 +36,20 @@ def crear_mecanico(mecanico: MecanicoCreate, db: Session = Depends(get_db)):
             )
         
         resultado = service.crear_mecanico({
+            "id_nacional": mecanico.id_nacional,
             "nombre": mecanico.nombre,
             "telefono": mecanico.telefono,
-            "especialidad": mecanico.especialidad,
+            "porcentaje_comision": mecanico.porcentaje_comision,
             "fecha_contratacion": mecanico.fecha_contratacion
         })
         
         # Retornar el mecánico creado en el formato esperado
         return MecanicoSchema(
             id=resultado["id"],
+            id_nacional=resultado["id_nacional"],
             nombre=resultado["nombre"],
             telefono=resultado.get("telefono"),
-            especialidad=resultado.get("especialidad"),
+            porcentaje_comision=resultado.get("porcentaje_comision"),
             fecha_contratacion=resultado.get("fecha_contratacion"),
             activo=True
         )
@@ -78,14 +80,35 @@ def listar_mecanicos(
     for mecanico in mecanicos_paginados:
         resultado.append(MecanicoSchema(
             id=mecanico["id"],
+            id_nacional=mecanico.get("id_nacional", ""),
             nombre=mecanico["nombre"],
             telefono=mecanico.get("telefono"),
-            especialidad=mecanico.get("especialidad"),
+            porcentaje_comision=mecanico.get("porcentaje_comision"),
             fecha_contratacion=mecanico.get("fecha_contratacion"),
             activo=True
         ))
     
     return resultado
+
+@router.get("/{mecanico_id}/estadisticas", response_model=MecanicoConEstadisticas)
+def obtener_estadisticas_mecanico(
+    mecanico_id: int,
+    mes: Optional[str] = Query(None, description="Formato: YYYY-MM"),
+    db: Session = Depends(get_db)
+):
+    """Obtener estadísticas de un mecánico (trabajos, ganancias, comisiones)"""
+    try:
+        print(f"🔍 DEBUG: Obteniendo estadísticas para mecánico {mecanico_id}, mes: {mes}")
+        # ✅ USAR LA FUNCIÓN CORRECTA QUE CALCULA GANANCIA BASE Y COMISIONES
+        result = MecanicoService.obtener_estadisticas_mecanico(db, mecanico_id, mes)
+        print(f"🔍 DEBUG: Resultado obtenido: {result}")
+        return result
+        
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        print(f"❌ ERROR en endpoint estadísticas: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{mecanico_id}", response_model=MecanicoSchema)
 def obtener_mecanico(mecanico_id: int, db: Session = Depends(get_db)):
@@ -98,9 +121,10 @@ def obtener_mecanico(mecanico_id: int, db: Session = Depends(get_db)):
     # Convertir al formato esperado
     return MecanicoSchema(
         id=mecanico["id"],
+        id_nacional=mecanico.get("id_nacional", ""),
         nombre=mecanico["nombre"],
         telefono=mecanico.get("telefono"),
-        especialidad=mecanico.get("especialidad"),
+        porcentaje_comision=mecanico.get("porcentaje_comision"),
         fecha_contratacion=mecanico.get("fecha_contratacion"),
         activo=True
     )
@@ -124,9 +148,10 @@ def actualizar_mecanico(
     
     return MecanicoSchema(
         id=mecanico_actualizado["id"],
+        id_nacional=mecanico_actualizado.get("id_nacional", ""),
         nombre=mecanico_actualizado["nombre"],
         telefono=mecanico_actualizado.get("telefono"),
-        especialidad=mecanico_actualizado.get("especialidad"),
+        porcentaje_comision=mecanico_actualizado.get("porcentaje_comision"),
         fecha_contratacion=mecanico_actualizado.get("fecha_contratacion"),
         activo=True
     )
@@ -141,48 +166,88 @@ def eliminar_mecanico(mecanico_id: int, db: Session = Depends(get_db)):
     
     return {"message": "Mecánico eliminado exitosamente"}
 
-@router.get("/{mecanico_id}/estadisticas", response_model=MecanicoConEstadisticas)
-def obtener_estadisticas_mecanico(
-    mecanico_id: int,
-    mes: Optional[str] = Query(None, description="Formato: YYYY-MM"),
-    db: Session = Depends(get_db)
-):
-    """Obtener estadísticas de un mecánico (trabajos, ganancias, comisiones)"""
+
+
+@router.get("/test-debug")
+def test_debug(db: Session = Depends(get_db)):
+    """Endpoint de prueba para debuggear"""
     try:
-        service = MecanicoService(db)
-        mecanico = service.obtener_mecanico_por_id(mecanico_id)
+        mecanicos = db.query(MecanicoModel).all()
+        return {
+            "total_mecanicos": len(mecanicos),
+            "mecanicos": [{"id": m.id, "nombre": m.nombre} for m in mecanicos]
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+@router.get("/{mecanico_id}/estadisticas-simple", response_model=MecanicoConEstadisticas)
+def obtener_estadisticas_simple(mecanico_id: int, db: Session = Depends(get_db)):
+    """Endpoint simple para probar estadísticas"""
+    try:
+        print(f"🔍 DEBUG SIMPLE: Buscando mecánico {mecanico_id}")
+        mecanico = db.query(MecanicoModel).filter(MecanicoModel.id == mecanico_id).first()
+        if not mecanico:
+            print(f"❌ DEBUG SIMPLE: Mecánico {mecanico_id} no encontrado")
+            raise HTTPException(status_code=404, detail="Mecánico no encontrado")
+        
+        print(f"✅ DEBUG SIMPLE: Mecánico encontrado: {mecanico.nombre}")
+        print(f"🔍 DEBUG SIMPLE: Campos del mecánico - id:{mecanico.id}, nombre:{mecanico.nombre}, activo:{mecanico.activo}")
+        
+        # Devolver datos hardcodeados para probar
+        result = MecanicoConEstadisticas(
+            id=mecanico.id,
+            nombre=mecanico.nombre,
+            telefono=mecanico.telefono,
+            porcentaje_comision=mecanico.porcentaje_comision,
+            fecha_contratacion=mecanico.fecha_contratacion,
+            activo=mecanico.activo,
+            total_trabajos=1,
+            total_ganancias=100000.0,
+            comisiones_mes=2000.0
+        )
+        
+        print(f"✅ DEBUG SIMPLE: Resultado creado exitosamente")
+        return result
+    except Exception as e:
+        print(f"❌ ERROR en estadísticas simple: {e}")
+        import traceback
+        print(f"❌ TRACEBACK: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{mecanico_id}/estadisticas-raw")
+def obtener_estadisticas_raw(mecanico_id: int, db: Session = Depends(get_db)):
+    """Endpoint raw sin modelo para debuggear"""
+    try:
+        mecanico = db.query(MecanicoModel).filter(MecanicoModel.id == mecanico_id).first()
         if not mecanico:
             raise HTTPException(status_code=404, detail="Mecánico no encontrado")
         
+        # ✅ OBTENER DATOS REALES DE LA BASE DE DATOS
+        from app.models.comisiones_mecanicos import ComisionMecanico
+        
         # Obtener comisiones del mecánico
-        comisiones = service.obtener_comisiones_mecanico(mecanico_id)
+        comisiones = db.query(ComisionMecanico).filter(
+            ComisionMecanico.id_mecanico == mecanico_id
+        ).all()
         
-        # Calcular estadísticas básicas
-        total_comisiones = sum(c["monto_comision"] for c in comisiones)
         total_trabajos = len(comisiones)
+        total_ganancias = sum(float(c.ganancia_trabajo) for c in comisiones)
+        comisiones_mes = sum(float(c.monto_comision) for c in comisiones)
         
-        # Filtrar por mes si se especifica
-        if mes:
-            comisiones_mes = [c for c in comisiones if c["fecha_trabajo"] and c["fecha_trabajo"].startswith(mes)]
-            total_comisiones = sum(c["monto_comision"] for c in comisiones_mes)
-            total_trabajos = len(comisiones_mes)
-        
-        return MecanicoConEstadisticas(
-            id=mecanico["id"],
-            nombre=mecanico["nombre"],
-            telefono=mecanico.get("telefono"),
-            porcentaje_comision=mecanico.get("porcentaje_comision"),
-            fecha_contratacion=mecanico.get("fecha_contratacion"),
-            activo=True,
-            total_trabajos=total_trabajos,
-            total_ganancias=total_comisiones,
-            comisiones_mes=total_comisiones
-        )
-        
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        # Devolver diccionario simple
+        return {
+            "id": mecanico.id,
+            "nombre": mecanico.nombre,
+            "telefono": mecanico.telefono,
+            "porcentaje_comision": float(mecanico.porcentaje_comision) if mecanico.porcentaje_comision else None,
+            "fecha_contratacion": mecanico.fecha_contratacion.isoformat() if mecanico.fecha_contratacion else None,
+            "activo": mecanico.activo,
+            "total_trabajos": total_trabajos,
+            "total_ganancias": total_ganancias,
+            "comisiones_mes": comisiones_mes
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"error": str(e)}
 
 @router.get("/reporte/mensual/{mes}", response_model=List[MecanicoConEstadisticas])
 def obtener_reporte_mensual(mes: str, db: Session = Depends(get_db)):
@@ -281,24 +346,30 @@ def asignar_mecanicos_a_trabajo(
         
         print(f"✅ API: Trabajo {trabajo_id} encontrado - Descripción: {trabajo.descripcion}")
         
-        print(f"🔍 API: Llamando al servicio...")
+        print(f"🔍 API: Llamando al servicio para {len(mecanicos_ids)} mecánicos...")
         service = MecanicoService(db)
-        resultado = service.asignar_mecanico_trabajo(trabajo_id, mecanicos_ids[0])  # Por ahora solo el primero
+        resultado = service.asignar_multiples_mecanicos_trabajo(trabajo_id, mecanicos_ids)
         
         if "error" in resultado:
             raise HTTPException(status_code=400, detail=resultado["error"])
         
         print(f"🔍 API: Resultado del servicio: {resultado}")
         
-        # Construir respuesta
-        respuesta = [AsignacionMecanicoResponse(
-            id_trabajo=trabajo_id,
-            id_mecanico=mecanicos_ids[0],
-            nombre_mecanico="Mecánico",  # Se puede obtener del servicio si es necesario
-            porcentaje_comision=2.0,
-            monto_comision=resultado["comision_calculada"],
-            ganancia_trabajo=resultado["comision_calculada"] / 0.02
-        )]
+        # Construir respuesta para todos los mecánicos
+        respuesta = []
+        for asignacion in resultado["asignaciones"]:
+            # Obtener nombre del mecánico
+            mecanico = db.query(MecanicoModel).filter(MecanicoModel.id == asignacion["id_mecanico"]).first()
+            nombre_mecanico = mecanico.nombre if mecanico else f"Mecánico {asignacion['id_mecanico']}"
+            
+            respuesta.append(AsignacionMecanicoResponse(
+                id_trabajo=trabajo_id,
+                id_mecanico=asignacion["id_mecanico"],
+                nombre_mecanico=nombre_mecanico,
+                porcentaje_comision=2.0,
+                monto_comision=asignacion["comision"],
+                ganancia_trabajo=resultado["ganancia_base"]
+            ))
         
         print(f"✅ API: Respuesta final con {len(respuesta)} elementos")
         return respuesta
@@ -462,6 +533,40 @@ def cambiar_estado_comision_mecanico(
     try:
         service = MecanicoService(db)
         resultado = service.cambiar_estado_comision(comision_id, nuevo_estado)
+        
+        if "error" in resultado:
+            raise HTTPException(status_code=400, detail=resultado["error"])
+        
+        return resultado
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{mecanico_id}/comisiones/debug")
+def verificar_comisiones_mecanico_debug(mecanico_id: int, db: Session = Depends(get_db)):
+    """
+    Verifica todas las comisiones de un mecánico para debug
+    """
+    try:
+        service = MecanicoService(db)
+        resultado = service.verificar_comisiones_mecanico(mecanico_id)
+        
+        if "error" in resultado:
+            raise HTTPException(status_code=400, detail=resultado["error"])
+        
+        return resultado
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/asignar-quincenas-comisiones")
+def asignar_quincenas_comisiones_pendientes(db: Session = Depends(get_db)):
+    """
+    Asigna quincenas a todas las comisiones pendientes que no tienen quincena asignada
+    """
+    try:
+        service = MecanicoService(db)
+        resultado = service.asignar_quincenas_comisiones_pendientes()
         
         if "error" in resultado:
             raise HTTPException(status_code=400, detail=resultado["error"])

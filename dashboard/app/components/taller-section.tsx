@@ -227,6 +227,7 @@ export function TallerSection() {
   const [estadoQuincena, setEstadoQuincena] = useState<EstadoQuincena | null>(null)
   const [loadingEstadoQuincena, setLoadingEstadoQuincena] = useState(false)
   const [totalPagoConComision, setTotalPagoConComision] = useState(0)
+  const [mensajeDenegacion, setMensajeDenegacion] = useState<string | null>(null)
   
   // Estado para popup de confirmación al denegar comisiones
   const [showConfirmDenegar, setShowConfirmDenegar] = useState(false)
@@ -967,15 +968,29 @@ export function TallerSection() {
         estado: comision.estado_comision
       }))
       
-      // FILTRAR SOLO LAS COMISIONES PENDIENTES
+      // FILTRAR SOLO LAS COMISIONES PENDIENTES (excluir DENEGADAS, APROBADAS y PENALIZADAS)
+      console.log("🔍 Comisiones antes del filtro:", comisionesFormateadas.map((c: ComisionQuincena) => ({
+        id: c.id,
+        estado: c.estado,
+        monto: c.monto_comision
+      })))
+      
       const comisionesPendientes = comisionesFormateadas.filter(
-        (comision: ComisionQuincena) => comision.estado === 'PENDIENTE'
+        (comision: ComisionQuincena) => {
+          const esPendiente = comision.estado === 'PENDIENTE'
+          const tieneMonto = Number(comision.monto_comision) > 0
+          const noEsDenegada = comision.estado !== 'DENEGADA'
+          const resultado = esPendiente && tieneMonto && noEsDenegada
+          
+          console.log(`🔍 Comisión ${comision.id}: estado=${comision.estado}, monto=${comision.monto_comision}, esPendiente=${esPendiente}, tieneMonto=${tieneMonto}, noEsDenegada=${noEsDenegada}, resultado=${resultado}`)
+          
+          return resultado
+        }
       )
       
       console.log("📊 Comisiones PENDIENTES filtradas:", comisionesPendientes)
       setComisionesQuincena(comisionesPendientes)
       
-      // Calcular total de comisiones PENDIENTES únicamente
       const totalComisiones = comisionesPendientes.reduce((sum: number, comisionItem: ComisionQuincena) => {
         return sum + (Number(comisionItem.monto_comision) || 0)
       }, 0)
@@ -1005,6 +1020,83 @@ export function TallerSection() {
     }
   }, [esQuincena])
 
+  // Función para debug de comisiones
+  const debugComisiones = useCallback(async () => {
+    if (!nuevoPagoSalario.id_mecanico) {
+      console.error("❌ No hay mecánico seleccionado")
+      return
+    }
+
+    try {
+      console.log("🔍 Debug de comisiones para mecánico:", nuevoPagoSalario.id_mecanico)
+      
+      const response = await fetch(`${buildApiUrl('/mecanicos')}/${nuevoPagoSalario.id_mecanico}/comisiones/debug`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Error al hacer debug: ${response.status} - ${errorText}`)
+      }
+
+      const resultado = await response.json()
+      console.log("🔍 Debug de comisiones:", resultado)
+
+    } catch (error) {
+      console.error("❌ Error al hacer debug:", error)
+      if (error instanceof Error) {
+        console.error("❌ Detalles del error:", {
+          message: error.message,
+          stack: error.stack
+        })
+      }
+    }
+  }, [nuevoPagoSalario.id_mecanico])
+
+  // Función para asignar quincenas a comisiones pendientes
+  const asignarQuincenasComisiones = useCallback(async () => {
+    try {
+      console.log("🔄 Asignando quincenas a comisiones pendientes...")
+      
+      const response = await fetch(`${buildApiUrl('/mecanicos')}/asignar-quincenas-comisiones`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Error al asignar quincenas: ${response.status} - ${errorText}`)
+      }
+
+      const resultado = await response.json()
+      console.log("✅ Resultado de asignación de quincenas:", resultado)
+      
+      // Recargar comisiones después de asignar quincenas
+      if (nuevoPagoSalario.id_mecanico && nuevoPagoSalario.semana_pago) {
+        await cargarComisionesQuincena(
+          nuevoPagoSalario.id_mecanico, 
+          nuevoPagoSalario.semana_pago, 
+          nuevoPagoSalario.fecha_pago, 
+          nuevoPagoSalario.monto_salario
+        )
+      }
+
+    } catch (error) {
+      console.error("❌ Error al asignar quincenas:", error)
+      if (error instanceof Error) {
+        console.error("❌ Detalles del error:", {
+          message: error.message,
+          stack: error.stack
+        })
+      }
+    }
+  }, [nuevoPagoSalario.id_mecanico, nuevoPagoSalario.semana_pago, nuevoPagoSalario.fecha_pago, nuevoPagoSalario.monto_salario, cargarComisionesQuincena])
+
   // Función para aprobar o denegar comisiones de quincena
   const aprobarDenegarComisionesQuincena = useCallback(async (aprobar: boolean) => {
     if (!nuevoPagoSalario.id_mecanico || !nuevoPagoSalario.semana_pago) {
@@ -1026,7 +1118,7 @@ export function TallerSection() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ aprobar })
+        body: JSON.stringify({ "aprobar": aprobar })
       })
 
       if (!response.ok) {
@@ -1048,7 +1140,7 @@ export function TallerSection() {
           totalComisiones
         })
       } else {
-        // Si se deniegan, limpiar comisiones y recalcular total (solo salario base)
+        // Si se deniegan, limpiar comisiones inmediatamente para feedback visual
         setComisionesQuincena([])
         setTotalPagoConComision(nuevoPagoSalario.monto_salario)
         setEstadoQuincena({
@@ -1057,6 +1149,15 @@ export function TallerSection() {
           estado: "DENEGADA",
           totalComisiones: 0
         })
+        
+        // Mostrar mensaje de confirmación
+        setMensajeDenegacion("✅ Comisiones denegadas exitosamente. Solo se afectaron las comisiones del mecánico específico.")
+        console.log("✅ Comisiones denegadas exitosamente. Solo se afectaron las comisiones del mecánico específico.")
+        
+        // Limpiar mensaje después de 3 segundos
+        setTimeout(() => {
+          setMensajeDenegacion(null)
+        }, 3000)
       }
 
     } catch (error) {
@@ -1797,6 +1898,24 @@ export function TallerSection() {
                     </div>
 
                     {/* Botones de aprobación/denegación */}
+                    {/* Botones de debug y asignación */}
+                    <div className="flex gap-2 mb-2">
+                      <Button
+                        onClick={debugComisiones}
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        🔍 Debug Comisiones
+                      </Button>
+                      <Button
+                        onClick={asignarQuincenasComisiones}
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        🔧 Asignar Quincenas
+                      </Button>
+                    </div>
+
                     <div className="flex gap-2">
                       <Button
                         onClick={() => aprobarDenegarComisionesQuincena(true)}
@@ -1993,6 +2112,22 @@ export function TallerSection() {
           </div>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Mensaje de confirmación de denegación */}
+      {mensajeDenegacion && (
+        <div className="fixed top-4 right-4 z-50 bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg border-l-4 border-green-400">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-medium">{mensajeDenegacion}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Dialog para ver gasto */}
       <Dialog open={isViewGastoDialogOpen} onOpenChange={setIsViewGastoDialogOpen}>

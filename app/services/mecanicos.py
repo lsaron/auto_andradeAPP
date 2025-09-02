@@ -18,14 +18,19 @@ def calcular_fechas_quincena(año: int, num_quincena: int) -> tuple[datetime, da
     - Semanas 1-2 = Q1 (días 1-15)
     - Semanas 3-4 = Q2 (días 16-31)
     """
+    # Obtener el mes actual para calcular las fechas correctamente
+    mes_actual = datetime.now().month
+    
     if num_quincena in [1, 2]:
-        # Primera quincena: días 1-15 del mes
-        fecha_inicio = datetime(año, 1, 1)
-        fecha_fin = datetime(año, 12, 15)
+        # Primera quincena: días 1-15 del mes actual
+        fecha_inicio = datetime(año, mes_actual, 1)
+        fecha_fin = datetime(año, mes_actual, 15)
     elif num_quincena in [3, 4]:
-        # Segunda quincena: días 16-31 del mes
-        fecha_inicio = datetime(año, 1, 16)
-        fecha_fin = datetime(año, 12, 31)
+        # Segunda quincena: días 16-31 del mes actual
+        fecha_inicio = datetime(año, mes_actual, 16)
+        # Obtener el último día del mes
+        ultimo_dia = calendar.monthrange(año, mes_actual)[1]
+        fecha_fin = datetime(año, mes_actual, ultimo_dia)
     else:
         raise ValueError(f"Número de quincena inválido: {num_quincena}. Debe ser 1, 2, 3 o 4.")
     
@@ -53,9 +58,11 @@ class MecanicoService:
             comisiones_aprobadas = sum(float(c.monto_comision) for c in comisiones if c.estado_comision == EstadoComision.APROBADA)
             comisiones_penalizadas = sum(float(c.monto_comision) for c in comisiones if c.estado_comision == EstadoComision.PENALIZADA)
             comisiones_pendientes = sum(float(c.monto_comision) for c in comisiones if c.estado_comision == EstadoComision.PENDIENTE)
+            comisiones_denegadas = sum(float(c.monto_comision) for c in comisiones if c.estado_comision == EstadoComision.DENEGADA)
             
             resultado.append({
                 "id": mecanico.id,
+                "id_nacional": mecanico.id_nacional,
                 "nombre": mecanico.nombre,
                 "telefono": mecanico.telefono,
                 "porcentaje_comision": float(mecanico.porcentaje_comision),
@@ -66,7 +73,8 @@ class MecanicoService:
                 "total_comisiones": total_comisiones,
                 "comisiones_aprobadas": comisiones_aprobadas,
                 "comisiones_penalizadas": comisiones_penalizadas,
-                "comisiones_pendientes": comisiones_pendientes
+                "comisiones_pendientes": comisiones_pendientes,
+                "comisiones_denegadas": comisiones_denegadas
             })
         
         return resultado
@@ -86,9 +94,11 @@ class MecanicoService:
         comisiones_aprobadas = [c for c in trabajos_asignados if c.estado_comision == EstadoComision.APROBADA]
         comisiones_penalizadas = [c for c in trabajos_asignados if c.estado_comision == EstadoComision.PENALIZADA]
         comisiones_pendientes = [c for c in trabajos_asignados if c.estado_comision == EstadoComision.PENDIENTE]
+        comisiones_denegadas = [c for c in trabajos_asignados if c.estado_comision == EstadoComision.DENEGADA]
         
         return {
             "id": mecanico.id,
+            "id_nacional": mecanico.id_nacional,
             "nombre": mecanico.nombre,
             "telefono": mecanico.telefono,
             "porcentaje_comision": float(mecanico.porcentaje_comision),
@@ -101,18 +111,22 @@ class MecanicoService:
                 "comisiones_aprobadas": len(comisiones_aprobadas),
                 "comisiones_penalizadas": len(comisiones_penalizadas),
                 "comisiones_pendientes": len(comisiones_pendientes),
+                "comisiones_denegadas": len(comisiones_denegadas),
                 "total_aprobadas": sum(float(c.monto_comision) for c in comisiones_aprobadas),
                 "total_penalizadas": sum(float(c.monto_comision) for c in comisiones_penalizadas),
-                "total_pendientes": sum(float(c.monto_comision) for c in comisiones_pendientes)
+                "total_pendientes": sum(float(c.monto_comision) for c in comisiones_pendientes),
+                "total_denegadas": sum(float(c.monto_comision) for c in comisiones_denegadas)
             }
         }
 
     def crear_mecanico(self, datos_mecanico: Dict[str, Any]) -> Dict[str, Any]:
         """Crea un nuevo mecánico"""
         nuevo_mecanico = Mecanico(
+            id_nacional=datos_mecanico["id_nacional"],
             nombre=datos_mecanico["nombre"],
             telefono=datos_mecanico.get("telefono"),
-            fecha_contratacion=datetime.strptime(datos_mecanico["fecha_contratacion"], "%Y-%m-%d") if datos_mecanico.get("fecha_contratacion") else None
+            porcentaje_comision=datos_mecanico.get("porcentaje_comision", 2.00),
+            fecha_contratacion=datos_mecanico.get("fecha_contratacion") if datos_mecanico.get("fecha_contratacion") else None
         )
         
         self.db.add(nuevo_mecanico)
@@ -122,7 +136,11 @@ class MecanicoService:
         return {
             "message": "Mecánico creado exitosamente",
             "id": nuevo_mecanico.id,
-            "nombre": nuevo_mecanico.nombre
+            "nombre": nuevo_mecanico.nombre,
+            "id_nacional": nuevo_mecanico.id_nacional,
+            "telefono": nuevo_mecanico.telefono,
+            "porcentaje_comision": float(nuevo_mecanico.porcentaje_comision),
+            "fecha_contratacion": nuevo_mecanico.fecha_contratacion.strftime("%Y-%m-%d") if nuevo_mecanico.fecha_contratacion else None
         }
 
     def actualizar_mecanico(self, mecanico_id: int, datos_actualizacion: Dict[str, Any]) -> Dict[str, Any]:
@@ -229,6 +247,82 @@ class MecanicoService:
             "message": "Mecánico asignado exitosamente",
             "id_asignacion": nueva_asignacion.id,
             "comision_calculada": float(comision)
+        }
+
+    def asignar_multiples_mecanicos_trabajo(self, trabajo_id: int, mecanicos_ids: List[int]) -> Dict[str, Any]:
+        """Asigna múltiples mecánicos a un trabajo y calcula comisiones divididas correctamente"""
+        print(f"🔍 SERVICIO: Asignando {len(mecanicos_ids)} mecánicos al trabajo {trabajo_id}")
+        
+        # Verificar que el trabajo existe
+        trabajo = self.db.query(Trabajo).filter(Trabajo.id == trabajo_id).first()
+        if not trabajo:
+            return {"error": "Trabajo no encontrado"}
+        
+        # Verificar que todos los mecánicos existen
+        mecanicos = []
+        for mecanico_id in mecanicos_ids:
+            mecanico = self.db.query(Mecanico).filter(Mecanico.id == mecanico_id).first()
+            if not mecanico:
+                return {"error": f"Mecánico {mecanico_id} no encontrado"}
+            mecanicos.append(mecanico)
+        
+        # Calcular ganancia base del trabajo (mano de obra - gastos reales)
+        from app.models.detalle_gastos import DetalleGasto
+        gastos = self.db.query(DetalleGasto).filter(DetalleGasto.id_trabajo == trabajo_id).all()
+        total_gastos_reales = sum(
+            (g.monto if isinstance(g.monto, Decimal) else Decimal(str(g.monto)))
+            for g in gastos
+        )
+        
+        mano_obra = trabajo.mano_obra if isinstance(trabajo.mano_obra, Decimal) else Decimal(str(trabajo.mano_obra or '0.00'))
+        ganancia_base = mano_obra - total_gastos_reales
+        
+        # Calcular comisión total del trabajo (2% sobre ganancia base)
+        comision_total_trabajo = ganancia_base * Decimal('0.02') if ganancia_base > 0 else Decimal('0.00')
+        
+        # Dividir comisión entre todos los mecánicos
+        comision_por_mecanico = comision_total_trabajo / len(mecanicos_ids) if mecanicos_ids else Decimal('0.00')
+        
+        print(f"🔍 SERVICIO: Ganancia base: {ganancia_base}")
+        print(f"🔍 SERVICIO: Comisión total del trabajo: {comision_total_trabajo}")
+        print(f"🔍 SERVICIO: Comisión por mecánico: {comision_por_mecanico}")
+        
+        # Eliminar asignaciones existentes para este trabajo
+        asignaciones_existentes = self.db.query(ComisionMecanico).filter(
+            ComisionMecanico.id_trabajo == trabajo_id
+        ).all()
+        
+        for asignacion in asignaciones_existentes:
+            self.db.delete(asignacion)
+        
+        # Crear nuevas asignaciones para cada mecánico
+        asignaciones_creadas = []
+        for mecanico_id in mecanicos_ids:
+            nueva_asignacion = ComisionMecanico(
+                id_trabajo=trabajo_id,
+                id_mecanico=mecanico_id,
+                ganancia_trabajo=ganancia_base,  # Ganancia base del trabajo
+                porcentaje_comision=Decimal('2.00'),
+                monto_comision=comision_por_mecanico,  # Comisión dividida
+                mes_reporte=trabajo.fecha.strftime("%Y-%m"),
+                estado_comision=EstadoComision.PENDIENTE
+            )
+            
+            self.db.add(nueva_asignacion)
+            asignaciones_creadas.append({
+                "id_mecanico": mecanico_id,
+                "comision": float(comision_por_mecanico)
+            })
+        
+        self.db.commit()
+        
+        return {
+            "message": f"{len(mecanicos_ids)} mecánicos asignados exitosamente",
+            "trabajo_id": trabajo_id,
+            "ganancia_base": float(ganancia_base),
+            "comision_total_trabajo": float(comision_total_trabajo),
+            "comision_por_mecanico": float(comision_por_mecanico),
+            "asignaciones": asignaciones_creadas
         }
 
     def actualizar_comisiones_trabajo(self, trabajo_id: int, mecanicos_ids: List[int]) -> Dict[str, Any]:
@@ -403,56 +497,39 @@ class MecanicoService:
     @staticmethod
     def obtener_estadisticas_mecanico(db: Session, mecanico_id: int, mes: Optional[str] = None) -> MecanicoConEstadisticas:
         """Obtener estadísticas de un mecánico (trabajos, ganancias, comisiones)"""
+        print(f"🔍 DEBUG SERVICIO: Buscando mecánico {mecanico_id}")
         mecanico = db.query(Mecanico).filter(Mecanico.id == mecanico_id).first()
         if not mecanico:
+            print(f"❌ DEBUG SERVICIO: Mecánico {mecanico_id} no encontrado")
             raise ValueError("Mecánico no encontrado")
+        print(f"✅ DEBUG SERVICIO: Mecánico encontrado: {mecanico.nombre}")
         
         try:
-            # ✅ CORRECTO: Calcular estadísticas en tiempo real en lugar de usar tabla ComisionMecanico
+            # ✅ CORRECTO: Usar la tabla ComisionMecanico que tiene los datos reales calculados
             
-            # Obtener todos los trabajos asignados al mecánico
-            trabajos_mecanico = db.query(TrabajoMecanico).filter(
-                TrabajoMecanico.id_mecanico == mecanico_id
+            # Obtener todas las comisiones del mecánico
+            comisiones_mecanico = db.query(ComisionMecanico).filter(
+                ComisionMecanico.id_mecanico == mecanico_id
             ).all()
             
-            trabajos_completados = len(trabajos_mecanico)
+            trabajos_completados = len(comisiones_mecanico)
             total_ganancias = Decimal('0.00')
             total_comisiones = Decimal('0.00')
             
-            # Calcular ganancias y comisiones para cada trabajo
-            for trabajo_mecanico in trabajos_mecanico:
-                trabajo = db.query(Trabajo).filter(Trabajo.id == trabajo_mecanico.id_trabajo).first()
-                if trabajo:
-                    # Calcular gastos reales del trabajo
-                    gastos_reales = db.query(func.sum(DetalleGasto.monto)).filter(
-                        DetalleGasto.id_trabajo == trabajo.id
-                    ).scalar() or Decimal('0.00')
-                    
-                    # ✅ CORRECTO: Ganancia base = Mano de Obra - Gastos Reales
-                    mano_obra = Decimal(str(trabajo.mano_obra or 0))
-                    gastos_reales_decimal = Decimal(str(gastos_reales))
-                    ganancia_base = mano_obra - gastos_reales_decimal
-                    
-                    # ✅ CORRECTO: Comisión = 2% sobre la ganancia base, dividida entre todos los mecánicos del trabajo
-                    # Primero calcular cuántos mecánicos están asignados a este trabajo
-                    total_mecanicos_trabajo = db.query(TrabajoMecanico).filter(
-                        TrabajoMecanico.id_trabajo == trabajo.id
-                    ).count()
-                    
-                    # Calcular comisión total y dividirla entre los mecánicos
-                    comision_total = ganancia_base * Decimal('0.02') if ganancia_base > 0 else Decimal('0.00')
-                    comision_individual = comision_total / total_mecanicos_trabajo if total_mecanicos_trabajo > 0 else Decimal('0.00')
-                    
-                    total_ganancias += ganancia_base
-                    total_comisiones += comision_individual  # Sumar la comisión individual, no la total
+            # Sumar ganancias y comisiones desde las comisiones ya calculadas
+            for comision in comisiones_mecanico:
+                # Usar los datos ya calculados en la tabla ComisionMecanico
+                total_ganancias += comision.ganancia_trabajo
+                total_comisiones += comision.monto_comision
             
             # Crear objeto con estadísticas calculadas en tiempo real
             mecanico_con_stats = MecanicoConEstadisticas(
                 id=mecanico.id,
+                id_nacional=mecanico.id_nacional,
                 nombre=mecanico.nombre,
                 telefono=mecanico.telefono,
                 porcentaje_comision=mecanico.porcentaje_comision,
-                fecha_contratacion=mecanico.fecha_contratacion,
+                fecha_contratacion=mecanico.fecha_contratacion.date() if mecanico.fecha_contratacion else None,
                 activo=mecanico.activo,
                 total_trabajos=trabajos_completados,
                 total_ganancias=float(total_ganancias),
@@ -462,13 +539,15 @@ class MecanicoService:
             return mecanico_con_stats
             
         except Exception as e:
+            print(f"❌ ERROR en obtener_estadisticas_mecanico: {e}")
             # En caso de error, retornar estadísticas con valores por defecto
             return MecanicoConEstadisticas(
                 id=mecanico.id,
+                id_nacional=mecanico.id_nacional,
                 nombre=mecanico.nombre,
                 telefono=mecanico.telefono,
                 porcentaje_comision=mecanico.porcentaje_comision,
-                fecha_contratacion=mecanico.fecha_contratacion,
+                fecha_contratacion=mecanico.fecha_contratacion.date() if mecanico.fecha_contratacion else None,
                 activo=mecanico.activo,
                 total_trabajos=0,
                 total_ganancias=0.0,
@@ -503,7 +582,81 @@ class MecanicoService:
             )
         ).limit(limit).all()
 
+    def verificar_comisiones_mecanico(self, mecanico_id: int) -> Dict[str, Any]:
+        """
+        Verifica todas las comisiones de un mecánico para debug
+        """
+        try:
+            # Obtener todas las comisiones del mecánico
+            comisiones = self.db.query(ComisionMecanico).filter(
+                ComisionMecanico.id_mecanico == mecanico_id
+            ).all()
+            
+            resultado = []
+            for comision in comisiones:
+                trabajo = self.db.query(Trabajo).filter(Trabajo.id == comision.id_trabajo).first()
+                resultado.append({
+                    "id": comision.id,
+                    "id_trabajo": comision.id_trabajo,
+                    "id_mecanico": comision.id_mecanico,
+                    "monto_comision": float(comision.monto_comision),
+                    "estado_comision": comision.estado_comision.value,
+                    "quincena": comision.quincena,
+                    "fecha_trabajo": trabajo.fecha.isoformat() if trabajo else None,
+                    "descripcion_trabajo": trabajo.descripcion if trabajo else None
+                })
+            
+            return {
+                "total_comisiones": len(resultado),
+                "comisiones": resultado
+            }
+            
+        except Exception as e:
+            return {"error": f"Error al verificar comisiones: {str(e)}"}
+
+    def asignar_quincenas_comisiones_pendientes(self) -> Dict[str, Any]:
+        """
+        Asigna quincenas a todas las comisiones pendientes que no tienen quincena asignada
+        """
+        try:
+            # Obtener todas las comisiones pendientes sin quincena
+            comisiones_sin_quincena = self.db.query(ComisionMecanico).filter(
+                ComisionMecanico.quincena.is_(None),
+                ComisionMecanico.estado_comision == EstadoComision.PENDIENTE
+            ).all()
+            
+            if not comisiones_sin_quincena:
+                return {"message": "No hay comisiones pendientes sin quincena asignada"}
+            
+            comisiones_actualizadas = 0
+            
+            for comision in comisiones_sin_quincena:
+                # Obtener la fecha del trabajo
+                trabajo = self.db.query(Trabajo).filter(Trabajo.id == comision.id_trabajo).first()
+                if trabajo:
+                    # Calcular la quincena basándose en la fecha del trabajo
+                    if trabajo.fecha.day <= 15:
+                        quincena = f"{trabajo.fecha.year}-Q1"
+                    else:
+                        quincena = f"{trabajo.fecha.year}-Q2"
+                    
+                    comision.quincena = quincena
+                    comisiones_actualizadas += 1
+            
+            self.db.commit()
+            
+            return {
+                "message": f"Quincenas asignadas exitosamente",
+                "comisiones_actualizadas": comisiones_actualizadas
+            }
+            
+        except Exception as e:
+            self.db.rollback()
+            return {"error": f"Error al asignar quincenas: {str(e)}"}
+
     def aprobar_denegar_comisiones_quincena(self, mecanico_id: int, quincena: str, aprobar: bool) -> Dict[str, Any]:
+        print(f"DEBUG: Función llamada con aprobar = {aprobar} (tipo: {type(aprobar)})")
+        print(f"DEBUG: Mecánico ID = {mecanico_id}, Quincena = {quincena}")
         """
         Aprueba o deniega todas las comisiones de un mecánico para una quincena específica.
         Si se deniegan, se eliminan todas las comisiones de la base de datos.
@@ -529,14 +682,30 @@ class MecanicoService:
                 return {"error": f"Error en formato de quincena: {e}"}
             
             # Obtener todas las comisiones del mecánico para esa quincena
-            # Buscar por fecha del trabajo dentro del rango de la quincena
-            comisiones = self.db.query(ComisionMecanico).join(
-                Trabajo, ComisionMecanico.id_trabajo == Trabajo.id
-            ).filter(
+            # Primero buscar por quincena asignada, luego por fecha del trabajo
+            comisiones = self.db.query(ComisionMecanico).filter(
                 ComisionMecanico.id_mecanico == mecanico_id,
-                Trabajo.fecha >= fecha_inicio,
-                Trabajo.fecha <= fecha_fin
+                ComisionMecanico.quincena == quincena
             ).all()
+            
+            print(f"DEBUG: Buscando comisiones para mecánico {mecanico_id}, quincena {quincena}")
+            print(f"DEBUG: Comisiones encontradas por quincena: {len(comisiones)}")
+            
+            # Si no hay comisiones con quincena asignada, buscar por fecha del trabajo
+            if not comisiones:
+                print(f"DEBUG: No hay comisiones con quincena asignada, buscando por fecha del trabajo")
+                comisiones = self.db.query(ComisionMecanico).join(
+                    Trabajo, ComisionMecanico.id_trabajo == Trabajo.id
+                ).filter(
+                    ComisionMecanico.id_mecanico == mecanico_id,
+                    Trabajo.fecha >= fecha_inicio,
+                    Trabajo.fecha <= fecha_fin,
+                    ComisionMecanico.estado_comision == EstadoComision.PENDIENTE
+                ).all()
+                
+                print(f"DEBUG: Comisiones encontradas por fecha del trabajo: {len(comisiones)}")
+                for c in comisiones:
+                    print(f"DEBUG: Comisión ID {c.id}, Trabajo {c.id_trabajo}, Estado {c.estado_comision}, Quincena {c.quincena}")
             
             if not comisiones:
                 return {"error": f"No hay comisiones para el mecánico {mecanico.nombre} en la quincena {quincena}"}
@@ -544,13 +713,18 @@ class MecanicoService:
             total_comisiones = len(comisiones)
             monto_total = sum(float(c.monto_comision) for c in comisiones)
             
+            print(f"DEBUG: Procesando {len(comisiones)} comisiones, aprobar = {aprobar}")
+            
             if aprobar:
+                print("DEBUG: Aprobando comisiones...")
                 # Marcar todas las comisiones como aprobadas y asignar la quincena
                 for comision in comisiones:
+                    print(f"DEBUG: Aprobando comisión ID {comision.id}")
                     comision.estado_comision = EstadoComision.APROBADA
                     comision.quincena = quincena  # Asignar la quincena
                 
                 self.db.commit()
+                print("DEBUG: Comisiones aprobadas y guardadas")
                 
                 return {
                     "message": f"Comisiones aprobadas exitosamente",
@@ -561,14 +735,20 @@ class MecanicoService:
                     "accion": "APROBADA"
                 }
             else:
-                # Eliminar todas las comisiones de la base de datos
+                print("DEBUG: Denegando comisiones...")
+                # Marcar comisiones como denegadas (monto = 0, estado = DENEGADA)
                 for comision in comisiones:
-                    self.db.delete(comision)
+                    print(f"DEBUG: Denegando comisión ID {comision.id}, monto actual: {comision.monto_comision}")
+                    comision.monto_comision = Decimal('0.00')
+                    comision.estado_comision = EstadoComision.DENEGADA
+                    comision.quincena = quincena
+                    print(f"DEBUG: Comisión ID {comision.id} denegada, nuevo monto: {comision.monto_comision}, nuevo estado: {comision.estado_comision}")
                 
                 self.db.commit()
+                print("DEBUG: Comisiones denegadas y guardadas")
                 
                 return {
-                    "message": f"Comisiones denegadas y eliminadas exitosamente",
+                    "message": f"Comisiones denegadas exitosamente (monto = 0, estado = DENEGADA)",
                     "mecanico": mecanico.nombre,
                     "quincena": quincena,
                     "total_comisiones": total_comisiones,
