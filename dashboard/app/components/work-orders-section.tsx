@@ -1268,111 +1268,209 @@ export function WorkOrdersSection() {
     try {
       console.log("🖨️ Imprimiendo factura para:", selectedOrderForPrint.id)
       
-      // Crear una ventana de impresión con el contenido de la factura
-      const printWindow = window.open('', '_blank')
-      if (!printWindow) {
-        alert("Por favor, permite las ventanas emergentes para imprimir")
-        return
+      // Obtener información completa del vehículo y cliente
+      let vehicleInfo = null
+      let clientInfo = null
+      
+      try {
+        // Obtener información del vehículo desde la API
+        const vehicleResponse = await fetch(`http://localhost:8000/api/carros/historial/${selectedOrderForPrint.licensePlate}`)
+        if (vehicleResponse.ok) {
+          vehicleInfo = await vehicleResponse.json()
+          console.log("🚗 Información del vehículo:", vehicleInfo)
+        }
+      } catch (error) {
+        console.warn("⚠️ No se pudo obtener información del vehículo:", error)
       }
+      
+      // Crear elemento temporal para la impresión
+      const printContent = document.createElement('div')
+      printContent.style.position = 'absolute'
+      printContent.style.left = '-9999px'
+      printContent.style.top = '-9999px'
+      printContent.style.width = '210mm' // A4 width
+      printContent.style.minHeight = '297mm' // A4 height
+      printContent.style.background = 'white'
+      printContent.style.padding = '20mm'
+      printContent.style.fontFamily = 'Arial, sans-serif'
+      printContent.style.fontSize = '12px'
+      printContent.style.lineHeight = '1.4'
 
-      // Crear el contenido HTML para imprimir la factura
-      const printContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Factura ${selectedOrderForPrint.id}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 20px; margin-bottom: 20px; }
-            .invoice-info { margin-bottom: 20px; }
-            .section { margin-bottom: 15px; }
-            .section-title { font-weight: bold; margin-bottom: 5px; }
-            .row { display: flex; justify-content: space-between; margin-bottom: 5px; }
-            .total { font-weight: bold; font-size: 18px; border-top: 1px solid #000; padding-top: 10px; }
-            .table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-            .table th, .table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            .table th { background-color: #f2f2f2; }
-            @media print { body { margin: 0; } }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>Auto Andrade</h1>
-            <h2>FACTURA</h2>
-            <p>Orden: ${selectedOrderForPrint.id}</p>
-            <p>Fecha: ${new Date(selectedOrderForPrint.date).toLocaleDateString('es-ES')}</p>
+      // Generar el contenido HTML de la factura profesional
+      const invoiceHTML = `
+        <!-- ENCABEZADO DE LA EMPRESA -->
+        <div style="text-align: center; border-bottom: 3px solid #1e40af; padding-bottom: 20px; margin-bottom: 30px;">
+          <h1 style="font-size: 32px; font-weight: bold; color: #1e40af; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 2px;">AUTO ANDRADE</h1>
+          <h2 style="font-size: 16px; color: #666; margin-bottom: 12px; font-style: italic;">Servicios Automotrices Profesionales</h2>
+          <div style="font-size: 12px; color: #555; line-height: 1.4;">
+            <p style="margin: 4px 0;"><strong>Teléfono:</strong> 8746-7602</p>
+            <p style="margin: 4px 0;"><strong>Experiencia:</strong> Más de 20 años en el sector automotriz</p>
+            <p style="margin: 4px 0;"><strong>Servicios:</strong> Mecánica general, diagnóstico y reparación</p>
           </div>
-          
-          <div class="invoice-info">
-            <div class="section">
-              <div class="section-title">Información del Cliente</div>
-              <div class="row">
-                <span>Nombre:</span>
-                <span>${selectedOrderForPrint.clientName}</span>
-              </div>
+        </div>
+        
+        <!-- TÍTULO DE LA FACTURA -->
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h2 style="font-size: 26px; font-weight: bold; color: #1e40af; text-transform: uppercase; letter-spacing: 1px;">ORDEN DE TRABAJO / FACTURA</h2>
+        </div>
+        
+        <!-- INFORMACIÓN DE LA FACTURA Y CLIENTE -->
+        <div style="display: flex; justify-content: space-between; margin-bottom: 30px; background: #f8fafc; padding: 20px; border-radius: 8px; border-left: 4px solid #1e40af;">
+          <div style="flex: 1; margin-right: 20px;">
+            <h3 style="font-size: 14px; font-weight: bold; color: #1e40af; margin-bottom: 12px; text-transform: uppercase; border-bottom: 1px solid #1e40af; padding-bottom: 4px;">Información de la Factura</h3>
+            <p style="font-size: 12px; margin: 6px 0;"><strong>Número de Orden:</strong> ${selectedOrderForPrint.id}</p>
+            <p style="font-size: 12px; margin: 6px 0;"><strong>Fecha de Emisión:</strong> ${new Date().toLocaleDateString('es-CR', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            <p style="font-size: 12px; margin: 6px 0;"><strong>Fecha de Servicio:</strong> ${formatDate(selectedOrderForPrint.date)}</p>
+            <p style="font-size: 12px; margin: 6px 0;"><strong>Estado:</strong> <span style="color: #10b981; font-weight: bold;">COMPLETADO</span></p>
+          </div>
+          <div style="flex: 1;">
+            <h3 style="font-size: 14px; font-weight: bold; color: #1e40af; margin-bottom: 12px; text-transform: uppercase; border-bottom: 1px solid #1e40af; padding-bottom: 4px;">Datos del Cliente</h3>
+            <p style="font-size: 12px; margin: 6px 0;"><strong>Nombre:</strong> ${vehicleInfo?.dueno_actual?.nombre || selectedOrderForPrint.clientName || 'No especificado'}</p>
+            <p style="font-size: 12px; margin: 6px 0;"><strong>Cédula:</strong> ${vehicleInfo?.dueno_actual?.id_cliente || 'No especificado'}</p>
+            <p style="font-size: 12px; margin: 6px 0;"><strong>Teléfono:</strong> ${vehicleInfo?.dueno_actual?.telefono || 'No especificado'}</p>
+            <p style="font-size: 12px; margin: 6px 0;"><strong>Correo:</strong> ${vehicleInfo?.dueno_actual?.correo || 'No especificado'}</p>
+          </div>
+        </div>
+        
+        <!-- INFORMACIÓN DEL VEHÍCULO -->
+        <div style="background: #f1f5f9; padding: 20px; border-radius: 8px; margin-bottom: 25px; border-left: 4px solid #3b82f6;">
+          <h3 style="font-size: 16px; font-weight: bold; color: #1e40af; margin-bottom: 15px; text-transform: uppercase; border-bottom: 1px solid #3b82f6; padding-bottom: 6px;">Información del Vehículo</h3>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div>
+              <p style="font-size: 12px; margin: 8px 0;"><strong>Matrícula/Placa:</strong> ${vehicleInfo?.matricula || selectedOrderForPrint.licensePlate || 'No especificado'}</p>
+              <p style="font-size: 12px; margin: 8px 0;"><strong>Marca:</strong> ${vehicleInfo?.marca || 'No especificado'}</p>
+              <p style="font-size: 12px; margin: 8px 0;"><strong>Modelo:</strong> ${vehicleInfo?.modelo || 'No especificado'}</p>
             </div>
-            
-            <div class="section">
-              <div class="section-title">Información del Vehículo</div>
-              <div class="row">
-                <span>Placa:</span>
-                <span>${selectedOrderForPrint.licensePlate}</span>
-              </div>
-            </div>
-            
-            <div class="section">
-              <div class="section-title">Servicios Realizados</div>
-              <p>${selectedOrderForPrint.description}</p>
-            </div>
-            
-            <div class="section">
-              <div class="section-title">Detalle de Costos</div>
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Concepto</th>
-                    <th>Monto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Servicios</td>
-                    <td>${formatCurrency(selectedOrderForPrint.manoObra || 0)}</td>
-                  </tr>
-                  ${selectedOrderForPrint.expenses && selectedOrderForPrint.expenses > 0 ? `
-                  <tr>
-                    <td>Repuestos y Materiales</td>
-                    <td>${formatCurrency(selectedOrderForPrint.expenses)}</td>
-                  </tr>
-                  ` : ''}
-                </tbody>
-              </table>
-            </div>
-            
-            <div class="total">
-              <div class="row">
-                <span>TOTAL A PAGAR:</span>
-                <span>${formatCurrency((selectedOrderForPrint.manoObra || 0) + (selectedOrderForPrint.expenses || 0))}</span>
-              </div>
+            <div>
+              <p style="font-size: 12px; margin: 8px 0;"><strong>Año:</strong> ${vehicleInfo?.anio || 'No especificado'}</p>
+              <p style="font-size: 12px; margin: 8px 0;"><strong>Color:</strong> No especificado</p>
+              <p style="font-size: 12px; margin: 8px 0;"><strong>VIN/Chasis:</strong> No especificado</p>
             </div>
           </div>
-          
-          <div style="margin-top: 40px; text-align: center;">
-            <p>Firma del Cliente: _________________________</p>
-            <p>Firma del Representante: _________________________</p>
+        </div>
+        
+        <!-- DESCRIPCIÓN DEL TRABAJO -->
+        <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin-bottom: 25px; border-left: 4px solid #f59e0b;">
+          <h3 style="font-size: 16px; font-weight: bold; color: #92400e; margin-bottom: 12px; text-transform: uppercase; border-bottom: 1px solid #f59e0b; padding-bottom: 6px;">Descripción del Trabajo Realizado</h3>
+          <p style="font-size: 13px; color: #451a03; line-height: 1.6; margin: 0;">${selectedOrderForPrint.description || 'No se especificó descripción del trabajo'}</p>
+        </div>
+        
+        <!-- TABLA DE SERVICIOS Y REPUESTOS -->
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;">
+          <thead>
+            <tr style="background: #1e40af; color: white;">
+              <th style="padding: 15px 12px; text-align: left; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; width: 45%;">Descripción del Servicio/Repuesto</th>
+              <th style="padding: 15px 12px; text-align: center; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; width: 15%;">Cantidad</th>
+              <th style="padding: 15px 12px; text-align: right; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; width: 20%;">Precio Unitario</th>
+              <th style="padding: 15px 12px; text-align: right; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; width: 20%;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${selectedOrderForPrint.expenseDetails && selectedOrderForPrint.expenseDetails.length > 0 ? 
+              selectedOrderForPrint.expenseDetails.map((expense: any) => `
+                <tr style="border-bottom: 1px solid #e5e7eb; background: #f9fafb;">
+                  <td style="padding: 12px; font-size: 12px; color: #374151;">${expense.item || 'Repuesto/Material'}</td>
+                  <td style="padding: 12px; font-size: 12px; text-align: center; color: #374151;">1</td>
+                  <td style="padding: 12px; font-size: 12px; text-align: right; color: #374151;">${formatCurrency(parseFloat(expense.amount) || 0)}</td>
+                  <td style="padding: 12px; font-size: 12px; text-align: right; color: #374151; font-weight: 500;">${formatCurrency(parseFloat(expense.amount) || 0)}</td>
+                </tr>
+              `).join('') : 
+              '<tr style="border-bottom: 1px solid #e5e7eb;"><td colspan="4" style="padding: 15px; text-align: center; color: #6b7280; font-style: italic; background: #f9fafb;">No se registraron repuestos o materiales específicos</td></tr>'
+            }
+            <tr style="background: #dbeafe; font-weight: bold; border-bottom: 2px solid #1e40af;">
+              <td style="padding: 12px; font-size: 12px; color: #1e40af;">MANO DE OBRA</td>
+              <td style="padding: 12px; font-size: 12px; text-align: center; color: #1e40af;">1</td>
+              <td style="padding: 12px; font-size: 12px; text-align: right; color: #1e40af;">${formatCurrency(selectedOrderForPrint.manoObra || 0)}</td>
+              <td style="padding: 12px; font-size: 12px; text-align: right; color: #1e40af;">${formatCurrency(selectedOrderForPrint.manoObra || 0)}</td>
+            </tr>
+          </tbody>
+        </table>
+        
+        <!-- RESUMEN DE COSTOS -->
+        <div style="background: #f8fafc; padding: 25px; border-radius: 8px; border: 2px solid #e5e7eb; margin-bottom: 25px;">
+          <h3 style="font-size: 16px; font-weight: bold; color: #1e40af; margin-bottom: 15px; text-transform: uppercase; border-bottom: 1px solid #1e40af; padding-bottom: 6px;">Resumen de Costos</h3>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 13px; padding: 8px 0;">
+            <span style="font-weight: 500; color: #555;">Subtotal (Repuestos/Materiales):</span>
+            <span style="font-weight: bold; color: #333;">${formatCurrency((selectedOrderForPrint.expenseDetails || []).reduce((sum: number, expense: any) => sum + (parseFloat(expense.amount) || 0), 0))}</span>
           </div>
-        </body>
-        </html>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 13px; padding: 8px 0;">
+            <span style="font-weight: 500; color: #555;">Mano de Obra:</span>
+            <span style="font-weight: bold; color: #333;">${formatCurrency(selectedOrderForPrint.manoObra || 0)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-top: 3px solid #1e40af; padding-top: 15px; margin-top: 15px; font-size: 18px; font-weight: bold; color: #1e40af; background: #dbeafe; padding: 15px; border-radius: 6px;">
+            <span>TOTAL A PAGAR:</span>
+            <span>${formatCurrency((selectedOrderForPrint.manoObra || 0) + ((selectedOrderForPrint.expenseDetails || []).reduce((sum: number, expense: any) => sum + (parseFloat(expense.amount) || 0), 0)))}</span>
+          </div>
+        </div>
+        
+        <!-- GARANTÍAS Y CONDICIONES -->
+        <div style="background: #ecfdf5; padding: 20px; border-radius: 8px; border-left: 4px solid #10b981; margin-bottom: 25px;">
+          <h3 style="font-size: 14px; font-weight: bold; color: #065f46; margin-bottom: 12px; text-transform: uppercase; border-bottom: 1px solid #10b981; padding-bottom: 6px;">Garantías y Condiciones</h3>
+          <div style="font-size: 11px; color: #047857; line-height: 1.5;">
+            <p style="margin: 6px 0;"><strong>• Garantía de Mano de Obra:</strong> 90 días para trabajos realizados</p>
+            <p style="margin: 6px 0;"><strong>• Garantía de Repuestos:</strong> 30 días en repuestos nuevos (según política del proveedor)</p>
+            <p style="margin: 6px 0;"><strong>• Excepciones:</strong> La garantía no cubre daños por mal uso, accidentes o desgaste normal</p>
+            <p style="margin: 6px 0;"><strong>• Válidez:</strong> Para hacer válida la garantía, presente esta factura al momento de la reclamación</p>
+          </div>
+        </div>
+        
+        <!-- AGRADECIMIENTO -->
+        <div style="text-align: center; font-size: 16px; color: #1e40af; font-weight: bold; margin: 25px 0; font-style: italic; background: #f0f9ff; padding: 20px; border-radius: 8px;">
+          ¡Gracias por confiar en Auto Andrade!<br>
+          <span style="font-size: 14px; color: #666;">Su satisfacción es nuestra prioridad</span>
+        </div>
+        
+        <!-- PIE DE PÁGINA -->
+        <div style="margin-top: 40px; padding-top: 20px; border-top: 2px solid #e5e7eb; text-align: center; font-size: 11px; color: #666; line-height: 1.4;">
+          <div style="font-weight: bold; margin-bottom: 8px;"><strong>AUTO ANDRADE</strong> - Servicios Automotrices Profesionales</div>
+          <div>Teléfono: 8746-7602 | Más de 20 años de experiencia en el sector automotriz</div>
+          <div style="margin-top: 8px; font-style: italic;">Esta factura es válida como comprobante de pago y garantía</div>
+          <div style="margin-top: 15px; font-size: 9px; color: #999; border-top: 1px solid #e5e7eb; padding-top: 10px;">
+            Impreso el ${new Date().toLocaleString('es-CR')} | Sistema de Gestión Auto Andrade
+          </div>
+        </div>
       `
 
-      printWindow.document.write(printContent)
-      printWindow.document.close()
+      // Insertar el HTML en el elemento
+      printContent.innerHTML = invoiceHTML
       
-      // Esperar a que se cargue el contenido y luego imprimir
-      printWindow.onload = () => {
-        printWindow.print()
-        printWindow.close()
-      }
+      // Agregar estilos de impresión
+      const printStyles = document.createElement('style')
+      printStyles.textContent = `
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          .print-content, .print-content * {
+            visibility: visible;
+          }
+          .print-content {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            background: white;
+          }
+          @page {
+            size: A4;
+            margin: 1.5cm;
+          }
+        }
+      `
+      document.head.appendChild(printStyles)
+      
+      // Agregar clase para impresión
+      printContent.className = 'print-content'
+      
+      // Agregar el elemento al DOM temporalmente
+      document.body.appendChild(printContent)
+      
+      // Imprimir
+      window.print()
+      
+      // Limpiar después de imprimir
+      document.body.removeChild(printContent)
+      document.head.removeChild(printStyles)
       
       setIsPrintOptionsModalOpen(false)
       
