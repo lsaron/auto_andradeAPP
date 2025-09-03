@@ -17,6 +17,8 @@ import {
   Clock
 } from "lucide-react"
 import { API_CONFIG, buildApiUrl } from "@/app/lib/api-config"
+import { mecanicosApi } from "@/lib/api-client"
+import type { Mechanic } from "@/lib/types"
 
 // Interfaces para los datos
 interface WorkOrder {
@@ -56,11 +58,7 @@ interface PagoSalario {
   mecanico_nombre?: string
 }
 
-interface Mecanico {
-  id: number
-  nombre: string
-  activo: boolean
-}
+
 
 interface MonthlyReport {
   month: string
@@ -106,7 +104,7 @@ export default function ReportsSection() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([])
   const [gastosTaller, setGastosTaller] = useState<GastoTaller[]>([])
   const [pagosSalarios, setPagosSalarios] = useState<PagoSalario[]>([])
-  const [mecanicos, setMecanicos] = useState<Mecanico[]>([])
+  const [mecanicos, setMecanicos] = useState<Mechanic[]>([])
   
   // Estados de control
   const [loading, setLoading] = useState(true)
@@ -152,23 +150,25 @@ export default function ReportsSection() {
       console.log('🔄 Cargando datos del backend...')
 
       // Cargar todos los datos en paralelo
-      const [workOrdersRes, gastosRes, salariosRes, mecanicosRes] = await Promise.all([
+      console.log('🔍 Intentando cargar mecánicos con mecanicosApi.getAll()...')
+      const [workOrdersRes, gastosRes, salariosRes, mecanicosData] = await Promise.all([
         fetch(buildApiUrl(API_CONFIG.ENDPOINTS.TRABAJOS)),
         fetch(buildApiUrl(API_CONFIG.ENDPOINTS.GASTOS_TALLER)),
         fetch(buildApiUrl(API_CONFIG.ENDPOINTS.PAGOS_SALARIOS)),
-        fetch(buildApiUrl(API_CONFIG.ENDPOINTS.MECANICOS))
+        mecanicosApi.getAll().catch(err => {
+          console.error('❌ Error al cargar mecánicos:', err)
+          return []
+        })
       ])
 
       if (!workOrdersRes.ok) throw new Error(`Error al cargar trabajos: ${workOrdersRes.status}`)
       if (!gastosRes.ok) throw new Error(`Error al cargar gastos: ${gastosRes.status}`)
       if (!salariosRes.ok) throw new Error(`Error al cargar salarios: ${salariosRes.status}`)
-      if (!mecanicosRes.ok) throw new Error(`Error al cargar mecánicos: ${mecanicosRes.status}`)
 
-      const [workOrdersData, gastosData, salariosData, mecanicosData] = await Promise.all([
+      const [workOrdersData, gastosData, salariosData] = await Promise.all([
         workOrdersRes.json(),
         gastosRes.json(),
-        salariosRes.json(),
-        mecanicosRes.json()
+        salariosRes.json()
       ])
 
       console.log('✅ Datos cargados:', {
@@ -178,10 +178,26 @@ export default function ReportsSection() {
         mecanicos: mecanicosData.length
       })
 
+      // Mapear los datos de mecánicos a la interfaz Mechanic
+      const mappedMechanics = mecanicosData.map((mecanico: any) => ({
+        id: mecanico.id.toString(),
+        name: mecanico.nombre,
+        mechanic_id: `MC-${mecanico.id}`,
+        jobs_completed: 0,
+        total_commission: 0,
+        total_profit: 0,
+        hire_date: mecanico.fecha_contratacion || new Date().toISOString(),
+        created_at: mecanico.created_at || new Date().toISOString(),
+        updated_at: mecanico.updated_at || new Date().toISOString()
+      }))
+
+      console.log('🔍 Mecánicos mapeados:', mappedMechanics)
+      console.log('🔍 DEBUG: Datos originales de mecánicos:', mecanicosData)
+
       setWorkOrders(workOrdersData)
       setGastosTaller(gastosData)
       setPagosSalarios(salariosData)
-      setMecanicos(mecanicosData)
+      setMecanicos(mappedMechanics)
 
       // Procesar años y meses disponibles
       const yearSet = new Set<number>(workOrdersData.map((wo: WorkOrder) => 
@@ -196,9 +212,13 @@ export default function ReportsSection() {
         const currentYear = new Date().getFullYear()
         setAvailableYears([currentYear])
         setSelectedYear(currentYear.toString())
+        // Actualizar meses para el año actual
+        setTimeout(() => updateAvailableMonths(currentYear), 0)
       } else {
         // Seleccionar el año más reciente por defecto
         setSelectedYear(years[0].toString())
+        // Actualizar meses para el año seleccionado
+        setTimeout(() => updateAvailableMonths(years[0]), 0)
       }
 
       console.log('🔍 Años disponibles:', years)
@@ -396,7 +416,9 @@ export default function ReportsSection() {
     selectedMonth,
     currentReport,
     filteredWorkOrders: filteredWorkOrders.length,
-    workOrders: workOrders.length
+    workOrders: workOrders.length,
+    mecanicosLength: mecanicos.length,
+    mecanicos: mecanicos
   })
 
   // Mostrar loading
@@ -627,7 +649,7 @@ export default function ReportsSection() {
                   {mecanicos.map((mecanico) => (
                     <TableRow key={mecanico.id}>
                       <TableCell className="font-medium">
-                        {mecanico.nombre}
+                        {mecanico.name}
                       </TableCell>
                       <TableCell>
                         {formatCurrency(0)} {/* TODO: Calcular salarios del mes */}

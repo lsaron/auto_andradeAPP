@@ -190,19 +190,12 @@ class MecanicoService:
         if not trabajo:
             return Decimal('0.00')
         
-        # Obtener gastos reales del trabajo
-        from app.models.detalle_gastos import DetalleGasto
-        gastos = self.db.query(DetalleGasto).filter(DetalleGasto.id_trabajo == trabajo_id).all()
-        total_gastos_reales = sum(
-            (g.monto if isinstance(g.monto, Decimal) else Decimal(str(g.monto)))
-            for g in gastos
-        )
-        
-        # Calcular ganancia base para comisiones (mano de obra - gastos reales)
+        # ✅ NUEVA LÓGICA: Ganancia base = Mano de obra (sin restar gastos de repuestos)
+        # Los gastos de repuestos son costos del cliente, no del taller
         mano_obra = trabajo.mano_obra if isinstance(trabajo.mano_obra, Decimal) else Decimal(str(trabajo.mano_obra or '0.00'))
-        ganancia_base = mano_obra - total_gastos_reales
+        ganancia_base = mano_obra
         
-        # Comisión del 2% sobre la ganancia base
+        # Comisión del 2% sobre la ganancia base (mano de obra)
         comision = ganancia_base * Decimal('0.02')
         return max(comision, Decimal('0.00'))  # No permitir comisiones negativas
 
@@ -266,16 +259,10 @@ class MecanicoService:
                 return {"error": f"Mecánico {mecanico_id} no encontrado"}
             mecanicos.append(mecanico)
         
-        # Calcular ganancia base del trabajo (mano de obra - gastos reales)
-        from app.models.detalle_gastos import DetalleGasto
-        gastos = self.db.query(DetalleGasto).filter(DetalleGasto.id_trabajo == trabajo_id).all()
-        total_gastos_reales = sum(
-            (g.monto if isinstance(g.monto, Decimal) else Decimal(str(g.monto)))
-            for g in gastos
-        )
-        
+        # ✅ NUEVA LÓGICA: Ganancia base = Mano de obra (sin restar gastos de repuestos)
+        # Los gastos de repuestos son costos del cliente, no del taller
         mano_obra = trabajo.mano_obra if isinstance(trabajo.mano_obra, Decimal) else Decimal(str(trabajo.mano_obra or '0.00'))
-        ganancia_base = mano_obra - total_gastos_reales
+        ganancia_base = mano_obra
         
         # Calcular comisión total del trabajo (2% sobre ganancia base)
         comision_total_trabajo = ganancia_base * Decimal('0.02') if ganancia_base > 0 else Decimal('0.00')

@@ -12,6 +12,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { ErrorMessage } from "@/components/ui/error-message"
 import { Edit, Eye, Plus, Trash2, Search, X, Calendar, Car, FileText, Printer, Coins, Users, Wrench, AlertTriangle } from "lucide-react"
 import Select from "react-select"
+import { generateInvoicePDF } from "@/lib/pdf-generator"
 import { mecanicosApi } from "@/lib/api-client"
 import type { Mechanic, AsignacionMecanico } from "@/lib/types"
 
@@ -456,20 +457,19 @@ export function WorkOrdersSection() {
     if (selectedMechanics.length === 0) return 0
     
     const manoObra = Number.parseFloat(newOrder.manoObra) || 0
-    const totalExpenses = calculateTotalExpenses()
     
-    // ✅ CORRECTO: Comisión solo sobre la ganancia base (mano de obra - costos reales)
-    const gananciaBase = manoObra - totalExpenses
+    // ✅ NUEVA LÓGICA: Ganancia base = Mano de obra (sin restar gastos de repuestos)
+    // Los gastos de repuestos son costos del cliente, no del taller
+    const gananciaBase = manoObra
     
     if (gananciaBase <= 0) return 0
     
-    // 2% de comisión SOLO sobre la ganancia base
+    // 2% de comisión SOLO sobre la ganancia base (mano de obra)
     const comisionTotal = gananciaBase * 0.02
     const comisionPorMecanico = comisionTotal / selectedMechanics.length
     
-    console.log("🔍 Calculando comisión (lógica corregida):", {
+    console.log("🔍 Calculando comisión (nueva lógica):", {
       manoObra,
-      totalExpenses,
       gananciaBase,
       comisionTotal,
       comisionPorMecanico,
@@ -479,30 +479,29 @@ export function WorkOrdersSection() {
     return comisionPorMecanico
   }, [selectedMechanics, newOrder.manoObra])
 
-  // Calculate commission preview for edit modal (lógica corregida)
+  // Calculate commission preview for edit modal (nueva lógica)
   const calculateEditCommissionPreview = useCallback(() => {
     if (selectedMechanics.length === 0) return 0
     
     const manoObra = Number.parseFloat(editOrder.manoObra) || 0
-    const totalExpenses = calculateEditTotalExpenses()
     
-    // ✅ CORRECTO: Comisión solo sobre la ganancia base (mano de obra - costos reales)
-    const gananciaBase = manoObra - totalExpenses
+    // ✅ NUEVA LÓGICA: Ganancia base = Mano de obra (sin restar gastos de repuestos)
+    // Los gastos de repuestos son costos del cliente, no del taller
+    const gananciaBase = manoObra
     
-    console.log("🔍 Calculando comisión para edición (lógica corregida):", {
+    console.log("🔍 Calculando comisión para edición (nueva lógica):", {
       manoObra,
-      totalExpenses,
       gananciaBase,
       selectedMechanics: selectedMechanics.length
     })
     
     if (gananciaBase <= 0) return 0
     
-    // 2% de comisión SOLO sobre la ganancia base
+    // 2% de comisión SOLO sobre la ganancia base (mano de obra)
     const comisionTotal = gananciaBase * 0.02
     const comisionPorMecanico = comisionTotal / selectedMechanics.length
     
-    console.log("🔍 Comisión calculada (lógica corregida):", {
+    console.log("🔍 Comisión calculada (nueva lógica):", {
       comisionTotal,
       comisionPorMecanico
     })
@@ -1262,6 +1261,23 @@ export function WorkOrdersSection() {
     setIsPrintOptionsModalOpen(true)
   }
 
+  const handleDownloadPDF = async () => {
+    if (!selectedOrderForPrint) return
+    
+    try {
+      console.log("📥 Descargando PDF para:", selectedOrderForPrint.id)
+      
+      // Usar la función de generación de PDF con descarga
+      await generateInvoicePDF(selectedOrderForPrint, true)
+      
+      setIsPrintOptionsModalOpen(false)
+      
+    } catch (error) {
+      console.error("Error al descargar PDF:", error)
+      alert("Error al descargar PDF. Inténtalo de nuevo.")
+    }
+  }
+
   const handlePrintInvoice = async () => {
     if (!selectedOrderForPrint) return
     
@@ -1311,7 +1327,7 @@ export function WorkOrdersSection() {
         
         <!-- TÍTULO DE LA FACTURA -->
         <div style="text-align: center; margin-bottom: 30px;">
-          <h2 style="font-size: 26px; font-weight: bold; color: #1e40af; text-transform: uppercase; letter-spacing: 1px;">ORDEN DE TRABAJO / FACTURA</h2>
+          <h2 style="font-size: 26px; font-weight: bold; color: #1e40af; text-transform: uppercase; letter-spacing: 1px;">ORDEN DE TRABAJO</h2>
         </div>
         
         <!-- INFORMACIÓN DE LA FACTURA Y CLIENTE -->
@@ -1422,7 +1438,7 @@ export function WorkOrdersSection() {
         
         <!-- PIE DE PÁGINA -->
         <div style="margin-top: 40px; padding-top: 20px; border-top: 2px solid #e5e7eb; text-align: center; font-size: 11px; color: #666; line-height: 1.4;">
-          <div style="font-weight: bold; margin-bottom: 8px;"><strong>AUTO ANDRADE</strong> - Servicios Automotrices Profesionales</div>
+          <div style="font-weight: bold; margin-bottom: 8px;"><strong>© 2025</strong> - AUTO ANDRADE</div>
           <div>Teléfono: 8746-7602 | Más de 20 años de experiencia en el sector automotriz</div>
           <div style="margin-top: 8px; font-style: italic;">Esta factura es válida como comprobante de pago y garantía</div>
           <div style="margin-top: 15px; font-size: 9px; color: #999; border-top: 1px solid #e5e7eb; padding-top: 10px;">
@@ -1484,20 +1500,8 @@ export function WorkOrdersSection() {
     if (!selectedOrderForPrint) return
     
     try {
-      console.log("📄 Generando PDF para:", selectedOrderForPrint.id)
-      
-      // Simular generación de PDF
-      alert(`Generando PDF para la orden ${selectedOrderForPrint.id}...`)
-      
-      // TODO: Implementar generación real de PDF
-      // const response = await fetch('/api/generate-pdf', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ orderId: selectedOrderForPrint.id })
-      // })
-      
+      await generateInvoicePDF(selectedOrderForPrint)
       setIsPrintOptionsModalOpen(false)
-      
     } catch (error) {
       console.error("Error al generar PDF:", error)
       alert("Error al generar PDF. Inténtalo de nuevo.")
@@ -1791,9 +1795,9 @@ export function WorkOrdersSection() {
                         <span>Costos totales:</span>
                         <span className="text-red-600">₡ {calculateTotalExpenses().toLocaleString("es-CR")}</span>
                       </div>
-                      <div className="flex justify-between text-green-600">
-                        <span>Precio cliente:</span>
-                        <span className="font-medium">₡ {(() => {
+                      <div className="flex justify-between">
+                        <span className="text-black">Precio cliente:</span>
+                        <span className="font-medium text-red-600">₡ {(() => {
                           // Precio cliente = suma de todos los precios cobrados al cliente
                           return newOrder.expenses.reduce((total, expense) => {
                             const precioCliente = expense.amountCharged && expense.amountCharged !== "" 
@@ -1803,21 +1807,14 @@ export function WorkOrdersSection() {
                           }, 0);
                         })().toLocaleString("es-CR")}</span>
                       </div>
-                      <div className="flex justify-between text-blue-600 pt-1 border-t">
-                        <span>Ganancia Base:</span>
-                        <span className="font-medium">
-                          ₡ {(Number.parseFloat(newOrder.manoObra || "0") - calculateTotalExpenses()).toLocaleString("es-CR")}
-                        </span>
-                      </div>
                       <div className="flex justify-between text-green-600 pt-1 border-t">
                         <span>Ganancia:</span>
                         <span className="font-medium">
                           ₡ {(() => {
                             const manoObra = Number.parseFloat(newOrder.manoObra || "0");
-                            const gastos = calculateTotalExpenses();
-                            const gananciaBase = manoObra - gastos;
                             const markup = calculateTotalMarkup();
-                            return gananciaBase + markup;
+                            // ✅ NUEVA LÓGICA: Ganancia = Mano de Obra + Markup
+                            return manoObra + markup;
                           })().toLocaleString("es-CR")}
                         </span>
                       </div>
@@ -1952,41 +1949,62 @@ export function WorkOrdersSection() {
                 </div>
               </div>
 
-              {/* Invoice Button - Only when work is applied */}
-              {newOrder.applyWork && (
-                <div className="space-y-3 p-4 bg-green-50 border border-green-200 rounded-md">
-                  <Label className="text-sm font-medium text-green-800">Facturación</Label>
+              {/* Botones de Impresión y Descarga PDF */}
+              {newOrder.licensePlate && newOrder.description && (
+                <div className="flex flex-col sm:flex-row gap-3">
                   <Button
                     type="button"
-                    variant="outline"
-                    className="w-full bg-white hover:bg-green-50 border-green-300 text-green-700"
-                    onClick={() => {
-                      // TODO: Implement generate invoice functionality
-                      alert("Generando factura...")
+                    onClick={async () => {
+                      const orderForPrint = {
+                        id: `WO-${Date.now()}`, // ID temporal para la factura
+                        ...newOrder,
+                        expenseDetails: newOrder.expenses || [], // Usar los gastos del formulario
+                        manoObra: parseFloat(newOrder.manoObra) || 0,
+                        totalCost: parseFloat(newOrder.totalCost) || 0,
+                        date: new Date().toISOString()
+                      }
+                      try {
+                        await generateInvoicePDF(orderForPrint, false) // false para imprimir
+                      } catch (error) {
+                        console.error("Error al imprimir PDF:", error)
+                        alert("Error al imprimir PDF. Inténtalo de nuevo.")
+                      }
                     }}
+                    className="w-full sm:w-auto bg-white hover:bg-gray-50 border border-gray-300 text-gray-700"
+                    variant="outline"
+                  >
+                    <Printer className="h-4 w-4 mr-2" />
+                    Imprimir Factura
+                  </Button>
+                  
+                  <Button
+                    type="button"
+                    onClick={async () => {
+                      const orderForPrint = {
+                        id: `WO-${Date.now()}`, // ID temporal para la factura
+                        ...newOrder,
+                        expenseDetails: newOrder.expenses || [], // Usar los gastos del formulario
+                        manoObra: parseFloat(newOrder.manoObra) || 0,
+                        totalCost: parseFloat(newOrder.totalCost) || 0,
+                        date: new Date().toISOString()
+                      }
+                      try {
+                        await generateInvoicePDF(orderForPrint, true) // true para descargar
+                      } catch (error) {
+                        console.error("Error al descargar PDF:", error)
+                        alert("Error al descargar PDF. Inténtalo de nuevo.")
+                      }
+                    }}
+                    className="w-full sm:w-auto bg-white hover:bg-gray-50 border border-gray-300 text-gray-700"
+                    variant="outline"
                   >
                     <FileText className="h-4 w-4 mr-2" />
-                    Generar Factura
+                    Descargar PDF
                   </Button>
                 </div>
               )}
 
-              {/* Print Button - Always Available - Small button */}
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="bg-white hover:bg-gray-50 border-gray-300"
-                  onClick={() => {
-                    // TODO: Implement print functionality
-                    alert("Imprimiendo...")
-                  }}
-                >
-                  <Printer className="h-4 w-4 mr-2" />
-                  Imprimir
-                </Button>
-              </div>
+
             </div>
 
             <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4 border-t">
@@ -2008,6 +2026,8 @@ export function WorkOrdersSection() {
                 Crear Orden de Trabajo
               </Button>
             </div>
+            
+
           </DialogContent>
         </Dialog>
 
@@ -2174,9 +2194,9 @@ export function WorkOrdersSection() {
                         <span>Costos totales:</span>
                         <span className="text-red-600">₡ {calculateEditTotalExpenses().toLocaleString("es-CR")}</span>
                       </div>
-                      <div className="flex justify-between text-green-600">
-                        <span>Precio cliente:</span>
-                        <span className="font-medium">₡ {(() => {
+                      <div className="flex justify-between">
+                        <span className="text-black">Precio cliente:</span>
+                        <span className="font-medium text-red-600">₡ {(() => {
                           // Precio cliente = suma de todos los precios cobrados al cliente
                           return editOrder.expenses.reduce((total, expense) => {
                             const precioCliente = expense.amountCharged && expense.amountCharged !== "" 
@@ -2186,21 +2206,14 @@ export function WorkOrdersSection() {
                           }, 0);
                         })().toLocaleString("es-CR")}</span>
                       </div>
-                      <div className="flex justify-between text-blue-600 pt-1 border-t">
-                        <span>Ganancia Base:</span>
-                        <span className="font-medium">
-                          ₡ {(Number.parseFloat(editOrder.manoObra || "0") - calculateEditTotalExpenses()).toLocaleString("es-CR")}
-                        </span>
-                      </div>
                       <div className="flex justify-between text-green-600 pt-1 border-t">
                         <span>Ganancia:</span>
                         <span className="font-medium">
                           ₡ {(() => {
                             const manoObra = Number.parseFloat(editOrder.manoObra || "0");
-                            const gastos = calculateEditTotalExpenses();
-                            const gananciaBase = manoObra - gastos;
                             const markup = calculateEditTotalMarkup();
-                            return gananciaBase + markup;
+                            // ✅ NUEVA LÓGICA: Ganancia = Mano de Obra + Markup
+                            return manoObra + markup;
                           })().toLocaleString("es-CR")}
                         </span>
                       </div>
@@ -2647,7 +2660,7 @@ export function WorkOrdersSection() {
                         </div>
                         <div className="text-right">
                           <div className="text-xs text-muted-foreground">
-                            Ganancia: {formatCurrency((order.manoObra || 0) - (order.expenses || 0) + (order.markupRepuestos || 0))}
+                            Ganancia: {formatCurrency((order.manoObra || 0) + (order.markupRepuestos || 0))}
                           </div>
                           {order.expenseDetails && order.expenseDetails.length > 0 && (
                             <div className="text-xs text-blue-600">
@@ -2671,7 +2684,7 @@ export function WorkOrdersSection() {
                           {formatCurrency(order.totalCost)}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          Ganancia: {formatCurrency((order.manoObra || 0) - (order.expenses || 0) + (order.markupRepuestos || 0))}
+                          Ganancia: {formatCurrency((order.manoObra || 0) + (order.markupRepuestos || 0))}
                         </div>
                         {order.expenseDetails && order.expenseDetails.length > 0 && (
                           <div className="text-xs text-blue-600">
@@ -2984,29 +2997,16 @@ export function WorkOrdersSection() {
                           </span>
                         </div>
 
-                        {/* Ganancia Base (Mano de Obra - Costo Real de Repuestos) */}
-                        <div className="flex justify-between py-1">
-                          <span className="text-sm font-medium">Ganancia Base:</span>
-                          <span className="font-semibold text-blue-600">
-                            {(() => {
-                              // Ganancia Base = Mano de Obra - Costo Real de Repuestos
-                              // Ejemplo: 80000 (mano de obra) - 50000 (costo real) = 30000
-                              const manoObra = selectedWorkOrder.manoObra || 0;
-                              const gananciaBase = manoObra - selectedWorkOrder.expenses;
-                              
-                              return formatCurrency(gananciaBase);
-                            })()}
-                          </span>
-                        </div>
+
 
                         {/* Ganancia Neta (Ganancia Base + Markup de Repuestos) */}
                         <div className="flex justify-between py-1">
                           <span className="text-sm font-medium">Ganancia Neta:</span>
                           <span className="font-semibold text-lg text-green-600">
                             {(() => {
-                              // Ganancia Base = Mano de Obra - Costo Real de Repuestos
+                              // ✅ NUEVA LÓGICA: Ganancia Base = Mano de Obra (sin restar gastos de repuestos)
                               const manoObra = selectedWorkOrder.manoObra || 0;
-                              const gananciaBase = manoObra - selectedWorkOrder.expenses;
+                              const gananciaBase = manoObra;
                               
                               // Calcular markup de repuestos (ganancia por repuestos)
                               const gananciaRepuestos = selectedWorkOrder.expenseDetails.reduce((total, expense) => {
@@ -3017,7 +3017,7 @@ export function WorkOrdersSection() {
                               }, 0);
                               
                               // Ganancia Neta = Ganancia Base + Markup de Repuestos
-                              // Ejemplo: 30000 (ganancia base) + 20000 (markup) = 50000
+                              // Ejemplo: 50000 (ganancia base) + 20000 (markup) = 70000
                               const gananciaNeta = gananciaBase + gananciaRepuestos;
                               
                               return formatCurrency(gananciaNeta);
@@ -3039,9 +3039,9 @@ export function WorkOrdersSection() {
                                 </span>
                                 <span className="text-sm font-semibold text-red-600">
                                                                       {(() => {
-                                      // Calcular comisión correctamente: 2% sobre la ganancia base
+                                      // ✅ NUEVA LÓGICA: Comisión 2% sobre la ganancia base (mano de obra)
                                       const manoObra = selectedWorkOrder.manoObra || 0;
-                                      const gananciaBase = manoObra - selectedWorkOrder.expenses;
+                                      const gananciaBase = manoObra;
                                       const comisionTotal = gananciaBase * 0.02;
                                       const comisionPorMecanico = comisionTotal / (selectedWorkOrder.assignedMechanics?.length || 1);
                                       return formatCurrency(comisionPorMecanico);
@@ -3053,9 +3053,9 @@ export function WorkOrdersSection() {
                               <span className="text-sm font-medium text-red-800">Total Comisiones:</span>
                               <span className="text-sm font-bold text-red-800">
                                 {(() => {
-                                  // Calcular comisión total correctamente: 2% sobre la ganancia base
+                                  // ✅ NUEVA LÓGICA: Comisión total 2% sobre la ganancia base (mano de obra)
                                   const manoObra = selectedWorkOrder.manoObra || 0;
-                                  const gananciaBase = manoObra - selectedWorkOrder.expenses;
+                                  const gananciaBase = manoObra;
                                   const comisionTotal = gananciaBase * 0.02;
                                   return formatCurrency(comisionTotal);
                                 })()}
@@ -3127,17 +3127,12 @@ export function WorkOrdersSection() {
                           </div>
                           {(() => {
                             const manoObra = selectedWorkOrder.manoObra || 0;
-                            const gananciaBase = manoObra - selectedWorkOrder.expenses;
+                            const gananciaBase = manoObra; // ✅ NUEVA LÓGICA: sin restar gastos de repuestos
                             const markupRepuestos = selectedWorkOrder.markupRepuestos || 0;
                             
                             return (
                               <>
-                                <div className="flex justify-between py-1">
-                                  <span className="text-sm font-medium">Ganancia Base:</span>
-                                  <span className="font-semibold text-lg text-blue-600">
-                                    {formatCurrency(gananciaBase)}
-                                  </span>
-                                </div>
+
                                 <div className="flex justify-between py-1">
                                   <span className="text-sm font-medium">Ganancia Neta:</span>
                                   <span className="font-semibold text-lg text-green-600">
@@ -3162,9 +3157,9 @@ export function WorkOrdersSection() {
                                   </span>
                                   <span className="text-sm font-semibold text-red-600">
                                     {(() => {
-                                      // Calcular comisión correctamente: 2% sobre la ganancia base
+                                      // ✅ NUEVA LÓGICA: Comisión 2% sobre la ganancia base (mano de obra)
                                       const manoObra = selectedWorkOrder.manoObra || 0;
-                                      const gananciaBase = manoObra - selectedWorkOrder.expenses;
+                                      const gananciaBase = manoObra;
                                       const comisionTotal = gananciaBase * 0.02;
                                       const comisionPorMecanico = comisionTotal / (selectedWorkOrder.assignedMechanics?.length || 1);
                                       return formatCurrency(comisionPorMecanico);
@@ -3176,16 +3171,16 @@ export function WorkOrdersSection() {
                                 <span className="text-sm font-medium text-red-800">Total Comisiones:</span>
                                 <span className="text-sm font-bold text-red-800">
                                   {(() => {
-                                    // Calcular comisión total correctamente: 2% sobre la ganancia base
+                                    // ✅ NUEVA LÓGICA: Comisión total 2% sobre la ganancia base (mano de obra)
                                     const manoObra = selectedWorkOrder.manoObra || 0;
-                                    const gananciaBase = manoObra - selectedWorkOrder.expenses;
+                                    const gananciaBase = manoObra;
                                     const comisionTotal = gananciaBase * 0.02;
                                     return formatCurrency(comisionTotal);
                                   })()}
                                 </span>
                               </div>
                               <div className="text-xs text-red-600 px-2 py-1 bg-red-50 rounded">
-                                <strong>Nota:</strong> Las comisiones se calculan al 2% sobre la ganancia base (Mano de Obra - Costos Reales)
+                                <strong>Nota:</strong> Las comisiones se calculan al 2% sobre la ganancia base (Mano de Obra)
                               </div>
                             </div>
                           ) : (
@@ -3288,12 +3283,12 @@ export function WorkOrdersSection() {
 
               <div className="space-y-3">
                 <Button
-                  onClick={handlePrintInvoice}
+                  onClick={handleDownloadPDF}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                   variant="default"
                 >
-                  <Printer className="h-4 w-4 mr-2" />
-                  Imprimir Factura
+                  <FileText className="h-4 w-4 mr-2" />
+                  Descargar PDF
                 </Button>
 
                 <Button
@@ -3301,8 +3296,8 @@ export function WorkOrdersSection() {
                   className="w-full bg-green-600 hover:bg-green-700 text-white"
                   variant="default"
                 >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Generar PDF
+                  <Printer className="h-4 w-4 mr-2" />
+                  Imprimir Factura
                 </Button>
 
                 <Button

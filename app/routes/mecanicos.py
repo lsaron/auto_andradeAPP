@@ -486,10 +486,9 @@ def obtener_trabajos_mecanico(
                     DetalleGasto.id_trabajo == trabajo.id
                 ).with_entities(func.sum(DetalleGasto.monto)).scalar() or 0
                 
-                # ✅ CORRECTO: Ganancia base = Mano de Obra - Gastos Reales
+                # ✅ NUEVA LÓGICA: Ganancia base = Mano de Obra (sin restar gastos de repuestos)
                 mano_obra = float(trabajo.mano_obra or 0)
-                gastos_reales_float = float(gastos_reales)
-                ganancia_base = mano_obra - gastos_reales_float
+                ganancia_base = mano_obra
                 
                 # ✅ CORRECTO: Comisión = 2% sobre la ganancia base, dividida entre todos los mecánicos del trabajo
                 # Primero calcular cuántos mecánicos están asignados a este trabajo
@@ -508,7 +507,7 @@ def obtener_trabajos_mecanico(
                     "descripcion": trabajo.descripcion,
                     "costo": float(trabajo.costo or 0),
                     "mano_obra": mano_obra,
-                    "total_gastos": gastos_reales_float,
+                    "total_gastos": float(gastos_reales),
                     "ganancia_base": ganancia_base,
                     "comision": comision_por_mecanico,
                     "porcentaje_comision": 2.0,  # 2% fijo

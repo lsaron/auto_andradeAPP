@@ -1,5 +1,11 @@
 // API Client with proper error handling and type safety
-import type { AsignacionMecanico } from './types'
+import type { 
+  AsignacionMecanico, 
+  AsignacionMecanicoResponse,
+  Mechanic, 
+  MechanicCreate, 
+  MecanicoConEstadisticas 
+} from './types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"
 
@@ -305,31 +311,7 @@ export const mecanicosApi = {
     if (!response.ok) throw new Error('Error al eliminar mecánico')
   },
 
-  // Asignar mecánicos a un trabajo
-  assignToWork: async (trabajoId: number, mecanicos: AsignacionMecanico[]): Promise<any> => {
-    console.log("🚨🚨🚨 API CLIENT: Llamando a assignToWork")
-    console.log("🔍 Trabajo ID:", trabajoId)
-    console.log("🔍 Mecánicos:", mecanicos)
-    
-    const response = await fetch(`${API_BASE_URL}/mecanicos/trabajos/${trabajoId}/asignar`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(mecanicos),
-    })
-    
-    console.log("🔍 Status de la respuesta:", response.status)
-    console.log("🔍 Headers de la respuesta:", response.headers)
-    
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error("❌ Error en la respuesta:", errorText)
-      throw new Error(`Error al asignar mecánicos: ${response.status} - ${errorText}`)
-    }
-    
-    const result = await response.json()
-    console.log("✅ Resultado de asignación:", result)
-    return result
-  },
+
 
   // Buscar mecánicos
   search: async (query: string): Promise<Mechanic[]> => {
@@ -339,7 +321,7 @@ export const mecanicosApi = {
   },
 
   // Obtener estadísticas de mecánico
-  getStats: async (id: number, month?: string): Promise<MechanicConEstadisticas> => {
+  getStats: async (id: number, month?: string): Promise<MecanicoConEstadisticas> => {
     // Usar el endpoint correcto que calcula estadísticas en tiempo real
     const url = `${API_BASE_URL}/mecanicos/${id}/estadisticas${month ? `?mes=${month}` : ''}`
     const response = await fetch(url)
@@ -348,7 +330,7 @@ export const mecanicosApi = {
   },
 
   // Obtener reporte mensual
-  getMonthlyReport: async (month: string): Promise<MechanicConEstadisticas[]> => {
+  getMonthlyReport: async (month: string): Promise<MecanicoConEstadisticas[]> => {
     const response = await fetch(`${API_BASE_URL}/mecanicos/reporte/mensual/${month}`)
     if (!response.ok) throw new Error('Error al obtener reporte mensual')
     return response.json()
