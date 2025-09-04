@@ -65,6 +65,49 @@ export function ClientsSection() {
     phone: "",
   })
 
+  // Funciones de formateo de teléfono
+  const formatPhoneNumber = (phone: string): string => {
+    if (!phone) return ""
+    
+    // Remover +506 si existe para procesar solo los números
+    let cleanNumber = phone
+    if (cleanNumber.startsWith("+506")) {
+      cleanNumber = cleanNumber.replace("+506", "").replace(/\D/g, "")
+    } else {
+      cleanNumber = cleanNumber.replace(/\D/g, "")
+    }
+    
+    // Formatear con +506 y guión
+    if (cleanNumber.length >= 8) {
+      return `+506 ${cleanNumber.slice(0, 4)}-${cleanNumber.slice(4)}`
+    } else if (cleanNumber.length > 0) {
+      return `+506 ${cleanNumber}`
+    }
+    
+    return ""
+  }
+
+  const formatPhoneForDisplay = (phone: string): string => {
+    if (!phone) return "Sin teléfono"
+    return formatPhoneNumber(phone)
+  }
+
+  const handlePhoneInput = (value: string, setter: (client: ClientCreate) => void, currentClient: ClientCreate) => {
+    // Remover todo excepto números y guiones
+    const cleanNumber = value.replace(/[^\d-]/g, "")
+    
+    // Remover guiones para contar solo dígitos
+    const digitsOnly = cleanNumber.replace(/-/g, "")
+    
+    // Limitar a 8 dígitos (máximo para Costa Rica)
+    const limitedDigits = digitsOnly.slice(0, 8)
+    
+    // Agregar +506 automáticamente solo si hay números
+    const formattedNumber = limitedDigits ? `+506${limitedDigits}` : ""
+    
+    setter({ ...currentClient, phone: formattedNumber })
+  }
+
   // Load clients on component mount
   useEffect(() => {
     loadClients()
@@ -414,13 +457,18 @@ export function ClientsSection() {
                 <Label htmlFor="phone" className="text-right">
                   Teléfono
                 </Label>
-                <Input
-                  id="phone"
-                  value={newClient.phone}
-                  onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })}
-                  className="col-span-3"
-                  placeholder="+506 "
-                />
+                <div className="col-span-3 relative">
+                  <Input
+                    id="phone"
+                    value={newClient.phone ? newClient.phone.replace("+506", "").replace(/\D/g, "").replace(/(\d{4})(\d{4})/, "$1-$2") : ""}
+                    onChange={(e) => handlePhoneInput(e.target.value, setNewClient, newClient)}
+                    className="pl-12"
+                    maxLength={9} // 8746-7602
+                  />
+                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm font-medium">
+                    +506
+                  </span>
+                </div>
               </div>
               
               {/* Validation Error Message */}
@@ -540,7 +588,7 @@ export function ClientsSection() {
                         </div>
                         <div className="flex items-center gap-2 text-sm">
                           <Phone className="h-3 w-3" />
-                          {client.phone || "Sin teléfono"}
+                          {formatPhoneForDisplay(client.phone)}
                         </div>
                       </div>
                     </TableCell>
@@ -626,7 +674,7 @@ export function ClientsSection() {
                   </div>
                   <div>
                     <Label className="text-sm font-medium text-gray-500">Teléfono</Label>
-                    <p className="text-base">{selectedClient.phone}</p>
+                    <p className="text-base">{formatPhoneForDisplay(selectedClient.phone)}</p>
                   </div>
                 </div>
               </div>
@@ -722,13 +770,18 @@ export function ClientsSection() {
               <Label htmlFor="edit-phone" className="text-right">
                 Teléfono
               </Label>
-              <Input
-                id="edit-phone"
-                value={editClient.phone}
-                onChange={(e) => setEditClient({ ...editClient, phone: e.target.value })}
-                className="col-span-3"
-                placeholder="+52 555 123 4567"
-              />
+              <div className="col-span-3 relative">
+                <Input
+                  id="edit-phone"
+                  value={editClient.phone ? editClient.phone.replace("+506", "").replace(/\D/g, "").replace(/(\d{4})(\d{4})/, "$1-$2") : ""}
+                  onChange={(e) => handlePhoneInput(e.target.value, setEditClient, editClient)}
+                  className="pl-12"
+                  maxLength={9} // 8746-7602
+                />
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm font-medium">
+                  +506
+                </span>
+              </div>
             </div>
           </div>
           <div className="flex justify-end gap-2">
@@ -768,7 +821,7 @@ export function ClientsSection() {
                     <span className="font-medium">Email:</span> {clientToDelete.email}
                   </div>
                   <div>
-                    <span className="font-medium">Teléfono:</span> {clientToDelete.phone}
+                    <span className="font-medium">Teléfono:</span> {formatPhoneForDisplay(clientToDelete.phone)}
                   </div>
                   <div>
                     <span className="font-medium">Vehículos:</span> {clientToDelete.vehicle_count}

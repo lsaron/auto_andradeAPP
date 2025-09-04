@@ -185,6 +185,13 @@ interface WorkOrder {
   mecanicos_ids: number[]
   mecanicos_nombres: string[]
   total_mecanicos: number
+  detalles_gastos?: Array<{
+    id: number
+    id_trabajo: number
+    descripcion: string
+    monto: number
+    monto_cobrado: number
+  }>
 }
 
 interface GastoTaller {
@@ -287,17 +294,30 @@ export default function ReportsSection() {
   const calcularSalariosMecanico = useCallback((mecanicoId: string) => {
     if (!selectedYear || !selectedMonth) return 0
     
+    console.log('🔍 DEBUG Salarios - Mecánico ID:', mecanicoId, 'Tipo:', typeof mecanicoId)
+    console.log('🔍 DEBUG Salarios - Año:', selectedYear, 'Mes:', selectedMonth)
+    console.log('🔍 DEBUG Salarios - Pagos disponibles:', pagosSalarios)
+    
     const salariosDelMes = pagosSalarios.filter(pago => {
       const fechaPago = new Date(pago.fecha_pago)
       const añoPago = fechaPago.getFullYear()
       const mesPago = fechaPago.getMonth() + 1
       
-      return añoPago === parseInt(selectedYear) && 
+      const matches = añoPago === parseInt(selectedYear) && 
              mesPago === parseInt(selectedMonth) &&
              pago.id_mecanico === parseInt(mecanicoId)
+      
+      console.log('🔍 DEBUG Pago:', pago, 'Fecha:', fechaPago, 'Año:', añoPago, 'Mes:', mesPago, 'ID Mecánico:', pago.id_mecanico, 'Matches:', matches)
+      
+      return matches
     })
     
-    return salariosDelMes.reduce((total, pago) => total + Number(pago.monto_salario || 0), 0)
+    console.log('🔍 DEBUG Salarios filtrados:', salariosDelMes)
+    
+    const total = salariosDelMes.reduce((total, pago) => total + Number(pago.monto_salario || 0), 0)
+    console.log('🔍 DEBUG Total salarios:', total)
+    
+    return total
   }, [pagosSalarios, selectedYear, selectedMonth])
 
   // Función para calcular comisiones del mecánico en el mes seleccionado
@@ -364,10 +384,11 @@ export default function ReportsSection() {
 
       // Cargar todos los datos en paralelo
       console.log('🔍 Intentando cargar mecánicos con mecanicosApi.getAll()...')
-      const [workOrdersRes, gastosRes, salariosRes, mecanicosData] = await Promise.all([
+      const [workOrdersRes, gastosRes, salariosRes, detallesGastosRes, mecanicosData] = await Promise.all([
         fetch(buildApiUrl(API_CONFIG.ENDPOINTS.TRABAJOS)),
         fetch(`${buildApiUrl(API_CONFIG.ENDPOINTS.GASTOS_TALLER)}?estado=PAGADO`),
         fetch(buildApiUrl(API_CONFIG.ENDPOINTS.PAGOS_SALARIOS)),
+        fetch(buildApiUrl(API_CONFIG.ENDPOINTS.DETALLES_GASTOS)),
         mecanicosApi.getAll().catch(err => {
           console.error('❌ Error al cargar mecánicos:', err)
           return []
@@ -377,17 +398,20 @@ export default function ReportsSection() {
       if (!workOrdersRes.ok) throw new Error(`Error al cargar trabajos: ${workOrdersRes.status}`)
       if (!gastosRes.ok) throw new Error(`Error al cargar gastos: ${gastosRes.status}`)
       if (!salariosRes.ok) throw new Error(`Error al cargar salarios: ${salariosRes.status}`)
+      if (!detallesGastosRes.ok) throw new Error(`Error al cargar detalles de gastos: ${detallesGastosRes.status}`)
 
-      const [workOrdersData, gastosData, salariosData] = await Promise.all([
+      const [workOrdersData, gastosData, salariosData, detallesGastosData] = await Promise.all([
         workOrdersRes.json(),
         gastosRes.json(),
-        salariosRes.json()
+        salariosRes.json(),
+        detallesGastosRes.json()
       ])
 
       console.log('✅ Datos cargados:', {
         trabajos: workOrdersData.length,
         gastos: gastosData.length,
         salarios: salariosData.length,
+        detallesGastos: detallesGastosData.length,
         mecanicos: mecanicosData.length
       })
 
@@ -407,7 +431,13 @@ export default function ReportsSection() {
       console.log('🔍 Mecánicos mapeados:', mappedMechanics)
       console.log('🔍 DEBUG: Datos originales de mecánicos:', mecanicosData)
 
-      setWorkOrders(workOrdersData)
+      // Procesar trabajos con detalles de gastos
+      const workOrdersWithDetails = workOrdersData.map((trabajo: any) => ({
+        ...trabajo,
+        detalles_gastos: detallesGastosData.filter((detalle: any) => detalle.id_trabajo === trabajo.id)
+      }))
+
+      setWorkOrders(workOrdersWithDetails)
       setGastosTaller(gastosData)
       setPagosSalarios(salariosData)
       setMecanicos(mappedMechanics)
@@ -508,10 +538,13 @@ export default function ReportsSection() {
 
     // Calcular gastos de repuestos del mes anterior
     const prevGastosRepuestosTotal = prevMonthWorkOrders.reduce((sum, wo) => {
-      const totalGastos = wo.total_gastos || 0
-      const markup = wo.markup_repuestos || 0
-      const costoReal = totalGastos - markup
-      return sum + costoReal
+      // Sumar todos los detalles de gastos de este trabajo
+      const detallesGastos = workOrders
+        .filter(w => w.id === wo.id)
+        .flatMap(w => w.detalles_gastos || [])
+        .reduce((detalleSum, detalle) => detalleSum + (detalle.monto || 0), 0)
+      
+      return sum + detallesGastos
     }, 0)
 
     // Calcular ganancia neta del mes anterior
@@ -711,12 +744,15 @@ export default function ReportsSection() {
       }))
     })
 
-    // Calcular gastos de repuestos (costo real de materiales sin markup)
+    // Calcular gastos de repuestos (suma de todos los detalles de gastos del mes)
     const gastosRepuestosTotal = monthWorkOrders.reduce((sum, wo) => {
-      const totalGastos = wo.total_gastos || 0
-      const markup = wo.markup_repuestos || 0
-      const costoReal = totalGastos - markup
-      return sum + costoReal
+      // Sumar todos los detalles de gastos de este trabajo
+      const detallesGastos = workOrders
+        .filter(w => w.id === wo.id)
+        .flatMap(w => w.detalles_gastos || [])
+        .reduce((detalleSum, detalle) => detalleSum + (detalle.monto || 0), 0)
+      
+      return sum + detallesGastos
     }, 0)
 
     // Calcular gastos totales (taller + salarios)

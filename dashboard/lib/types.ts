@@ -167,11 +167,18 @@ export interface Mechanic {
 }
 
 export interface MechanicCreate {
-  name: string
+  nombre: string
+  id_nacional: string
+  telefono?: string
+  fecha_contratacion?: string
+  porcentaje_comision?: number
 }
 
 export interface MechanicUpdate {
-  name?: string
+  nombre?: string
+  telefono?: string
+  fecha_contratacion?: string
+  porcentaje_comision?: number
 }
 
 // Nuevos tipos para mecánicos y comisiones

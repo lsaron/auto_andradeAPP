@@ -41,6 +41,33 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
+// Función para formatear números telefónicos
+const formatPhoneNumber = (phone: string): string => {
+  if (!phone) return ""
+  
+  // Remover +506 si existe para procesar solo los números
+  let cleanNumber = phone
+  if (cleanNumber.startsWith("+506")) {
+    cleanNumber = cleanNumber.replace("+506", "").replace(/\D/g, "")
+  } else {
+    cleanNumber = cleanNumber.replace(/\D/g, "")
+  }
+  
+  // Formatear con +506 y guión
+  if (cleanNumber.length >= 8) {
+    return `+506 ${cleanNumber.slice(0, 4)}-${cleanNumber.slice(4)}`
+  } else if (cleanNumber.length > 0) {
+    return `+506 ${cleanNumber}`
+  }
+  
+  return ""
+}
+
+const formatPhoneForDisplay = (phone: string): string => {
+  if (!phone) return "Sin teléfono"
+  return formatPhoneNumber(phone)
+}
+
 interface Car {
   id: string
   licensePlate: string
@@ -1333,7 +1360,7 @@ export function CarsSection() {
                             <Phone className="h-4 w-4" />
                             Teléfono:
                           </span>
-                          <span className="font-mono">{selectedCar.ownerPhone}</span>
+                          <span className="font-mono">{formatPhoneForDisplay(selectedCar.ownerPhone)}</span>
                         </div>
                       )}
                       {selectedCar.ownerAddress && (
@@ -1834,7 +1861,7 @@ export function CarsSection() {
                       )}
                       {selectedCar.ownerPhone && (
                         <div>
-                          <span className="font-medium">Teléfono:</span> {selectedCar.ownerPhone}
+                          <span className="font-medium">Teléfono:</span> {formatPhoneForDisplay(selectedCar.ownerPhone)}
                         </div>
                       )}
                       {selectedCar.ownerAddress && (
@@ -1890,7 +1917,7 @@ export function CarsSection() {
                             )}
                             {history.ownerPhone && (
                               <div>
-                                <span className="font-medium">Teléfono:</span> {history.ownerPhone}
+                                <span className="font-medium">Teléfono:</span> {formatPhoneForDisplay(history.ownerPhone)}
                               </div>
                             )}
                             {history.transferReason && (

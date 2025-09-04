@@ -23,6 +23,9 @@ export const API_CONFIG = {
     // Trabajos
     TRABAJOS: '/trabajos',
     
+    // Detalles de gastos
+    DETALLES_GASTOS: '/detalles-gastos',
+    
     // Reportes
     REPORTES: '/reportes',
     

@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { ErrorMessage } from "@/components/ui/error-message"
-import { Edit, Eye, Plus, Trash2, Search, X, Calendar, Car, FileText, Printer, Coins, Users, Wrench, AlertTriangle } from "lucide-react"
+import { Edit, Eye, Plus, Trash2, Search, X, Calendar, Car, FileText, Printer, Coins, Users, Wrench, AlertTriangle, RefreshCw } from "lucide-react"
 import Select from "react-select"
 import { generateInvoicePDF } from "@/lib/pdf-generator"
 import { mecanicosApi } from "@/lib/api-client"
@@ -90,6 +90,12 @@ export function WorkOrdersSection() {
     endMonth: "",
     endYear: "",
   })
+
+  // Estados para el reinicio mensual (mínimos)
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth())
+  const [isCurrentPeriod, setIsCurrentPeriod] = useState(true)
+  const [availableYears, setAvailableYears] = useState<number[]>([])
 
   // Modal states
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false)
@@ -183,6 +189,46 @@ export function WorkOrdersSection() {
     console.log("🔍 Años disponibles generados:", yearOptions)
     return yearOptions
   }, [])
+
+  // Función para detectar fin de mes (simplificada)
+  const esFinDeMes = useCallback(() => {
+    const fecha = new Date()
+    const dia = fecha.getDate()
+    const diaSemana = fecha.getDay()
+    const esDomingo = diaSemana === 0
+    const esCuartaSemana = Math.ceil(dia / 7) === 4
+    return esDomingo && esCuartaSemana
+  }, [])
+
+  // Función para obtener años disponibles
+  const obtenerAnosDisponibles = useCallback(async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/trabajos/")
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      const data = await response.json()
+      
+      // Extraer años únicos de los trabajos
+      const years = new Set<number>()
+      data.forEach((order: any) => {
+        if (order.fecha) {
+          const year = new Date(order.fecha).getFullYear()
+          if (!isNaN(year)) {
+            years.add(year)
+          }
+        }
+      })
+      
+      const sortedYears = Array.from(years).sort((a, b) => b - a)
+      setAvailableYears(sortedYears)
+      console.log("📅 Años disponibles cargados:", sortedYears)
+    } catch (error) {
+      console.error("Error cargando años disponibles:", error)
+      setAvailableYears([new Date().getFullYear()])
+    }
+  }, [])
+
 
   // Add function to handle expenses
   const addExpense = () => {
@@ -879,7 +925,12 @@ export function WorkOrdersSection() {
           setInitialLoading(true)
         }
 
-        const response = await fetch("http://localhost:8000/api/trabajos/")
+        // Construir URL con filtros de fecha
+        const startDate = new Date(selectedYear, selectedMonth, 1)
+        const endDate = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59)
+        const url = `http://localhost:8000/api/trabajos/?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`
+        
+        const response = await fetch(url)
         if (!response.ok) {
           throw new Error(`Error ${response.status}: ${response.statusText}`)
         }
@@ -935,8 +986,23 @@ export function WorkOrdersSection() {
         }
       }
     },
-    [loading],
+    [loading, selectedYear, selectedMonth, loadExpenseDetails],
   )
+
+  // Función para verificar período actual (simplificada)
+  const verificarPeriodoActual = useCallback(() => {
+    const fechaActual = new Date()
+    const esPeriodoActual = selectedYear === fechaActual.getFullYear() && selectedMonth === fechaActual.getMonth()
+    setIsCurrentPeriod(esPeriodoActual)
+    
+    // Si es fin de mes y estamos en período actual, reiniciar
+    if (esFinDeMes() && esPeriodoActual) {
+      console.log("🔄 FIN DE MES - Reiniciando datos...")
+      setWorkOrders([])
+      setFilteredWorkOrders([])
+      loadWorkOrders(1, true)
+    }
+  }, [selectedYear, selectedMonth, esFinDeMes, loadWorkOrders])
 
   // Search and filter functionality - updated to include date filtering
   const handleSearchAndFilter = useCallback(

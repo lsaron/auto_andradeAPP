@@ -31,19 +31,20 @@ import type { Mechanic, MechanicCreate } from "@/lib/types"
 import { mecanicosApi } from "@/lib/api-client"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { ErrorMessage } from "@/components/ui/error-message"
-import { useMonthlyReset } from "@/hooks/use-monthly-reset"
+import { useBiweeklyReset } from "@/hooks/use-biweekly-reset"
 
 export function MechanicsSection() {
-  // Hook para reset mensual automático
+  // Hook para reset quincenal automático
   const {
+    currentQuincena,
     currentMonth,
     currentYear,
-    isMondayStartOfMonth,
+    isMondayStartOfQuincena,
+    isSundayEndOfQuincena,
     shouldShowResetBanner,
     executeReset
-  } = useMonthlyReset({
+  } = useBiweeklyReset({
     autoReset: true,
-    resetDay: 1, // Reset el primer día del mes
     preserveHistory: true
   })
 
@@ -57,12 +58,13 @@ export function MechanicsSection() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isJobsDialogOpen, setIsJobsDialogOpen] = useState(false)
   const [selectedMechanic, setSelectedMechanic] = useState<Mechanic | null>(null)
-  const [newMechanic, setNewMechanic] = useState<MechanicCreate & { id_number?: string }>({
-    name: "",
-    id_number: "",
+  const [newMechanic, setNewMechanic] = useState<MechanicCreate>({
+    nombre: "",
+    id_nacional: "",
   })
   const [editMechanic, setEditMechanic] = useState<MechanicCreate>({
-    name: "",
+    nombre: "",
+    id_nacional: "",
   })
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
@@ -173,20 +175,20 @@ export function MechanicsSection() {
         
         // Para cada mecánico, obtener sus estadísticas y mapear a la interfaz Mechanic
         const mecanicosConStats = await Promise.all(
-          data.map(async (mecanico) => {
+          data.map(async (mecanico: any) => {
             try {
               console.log(`🔍 Obteniendo estadísticas para mecánico ${mecanico.id}...`)
-              const stats = await mecanicosApi.getStats(mecanico.id)
+              const stats: any = await mecanicosApi.getStats(parseInt(mecanico.id))
               console.log(`🔍 Estadísticas para mecánico ${mecanico.id}:`, stats)
               console.log(`🔍 Tipo de stats:`, typeof stats, stats === null, stats === undefined)
               
               const mecanicoMapeado = {
                 id: mecanico.id.toString(),
-                name: mecanico.nombre,
+                name: mecanico.nombre || '',
                 mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
-                jobs_completed: stats.total_trabajos || 0,
-                total_commission: parseFloat(stats.comisiones_mes || 0),
-                total_profit: parseFloat(stats.total_ganancias || 0),
+                jobs_completed: stats?.total_trabajos || 0,
+                total_commission: parseFloat(stats?.comisiones_mes?.toString() || '0'),
+                total_profit: parseFloat(stats?.total_ganancias?.toString() || '0'),
                 hire_date: mecanico.fecha_contratacion || new Date().toISOString(),
                 created_at: mecanico.created_at || new Date().toISOString(),
                 updated_at: mecanico.updated_at || new Date().toISOString()
@@ -199,7 +201,7 @@ export function MechanicsSection() {
               // Si no se pueden obtener estadísticas, usar valores por defecto
               return {
                 id: mecanico.id.toString(),
-                name: mecanico.nombre,
+                name: mecanico.nombre || '',
                 mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
                 jobs_completed: 0,
                 total_commission: 0,
@@ -237,19 +239,19 @@ export function MechanicsSection() {
       
       // Para cada mecánico, obtener sus estadísticas y mapear a la interfaz Mechanic
       const mecanicosConStats = await Promise.all(
-        data.map(async (mecanico) => {
+        data.map(async (mecanico: any) => {
           try {
             console.log(`🔄 Obteniendo estadísticas para mecánico ${mecanico.id}...`)
-            const stats = await mecanicosApi.getStats(mecanico.id)
+            const stats: any = await mecanicosApi.getStats(parseInt(mecanico.id))
             console.log(`🔄 Estadísticas para mecánico ${mecanico.id}:`, stats)
             
             const mecanicoMapeado = {
               id: mecanico.id.toString(),
-              name: mecanico.nombre,
+              name: mecanico.nombre || '',
               mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
-              jobs_completed: stats.total_trabajos || 0,
-              total_commission: parseFloat(stats.comisiones_mes || 0),
-              total_profit: parseFloat(stats.total_ganancias || 0),
+              jobs_completed: stats?.total_trabajos || 0,
+              total_commission: parseFloat(stats?.comisiones_mes?.toString() || '0'),
+              total_profit: parseFloat(stats?.total_ganancias?.toString() || '0'),
               hire_date: mecanico.fecha_contratacion || new Date().toISOString(),
               created_at: mecanico.created_at || new Date().toISOString(),
               updated_at: mecanico.updated_at || new Date().toISOString()
@@ -262,7 +264,7 @@ export function MechanicsSection() {
             // Si no se pueden obtener estadísticas, usar valores por defecto
             return {
               id: mecanico.id.toString(),
-              name: mecanico.nombre,
+              name: mecanico.nombre || '',
               mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
               jobs_completed: 0,
               total_commission: 0,
@@ -325,20 +327,20 @@ export function MechanicsSection() {
   }, [mechanics])
 
   const handleCreateMechanic = useCallback(async () => {
-    if (!newMechanic.name.trim() || !newMechanic.id_number?.trim()) return
+    if (!newMechanic.nombre.trim() || !newMechanic.id_nacional?.trim()) return
 
     try {
       const mechanicData = {
-        nombre: newMechanic.name.trim(),
-        id_nacional: newMechanic.id_number.trim(),
+        nombre: newMechanic.nombre.trim(),
+        id_nacional: newMechanic.id_nacional.trim(),
       }
       
-      const mecanicoCreado = await mecanicosApi.create(mechanicData)
+      const mecanicoCreado: any = await mecanicosApi.create(mechanicData)
       
       // Mapear el mecánico creado a la interfaz Mechanic
       const nuevoMechanic: Mechanic = {
         id: mecanicoCreado.id.toString(),
-        name: mecanicoCreado.nombre,
+        name: mecanicoCreado.nombre || '',
         mechanic_id: `MC-${mecanicoCreado.id}`, // Formato MC-1, MC-2, etc.
         jobs_completed: 0,
         total_commission: 0,
@@ -349,7 +351,7 @@ export function MechanicsSection() {
       }
       
       setMechanics((prev) => [...prev, nuevoMechanic])
-      setNewMechanic({ name: "", id_number: "" })
+      setNewMechanic({ nombre: "", id_nacional: "" })
       setIsCreateDialogOpen(false)
     } catch (err) {
       setError("Error al crear el mecánico.")
@@ -358,17 +360,17 @@ export function MechanicsSection() {
   }, [newMechanic])
 
   const handleEditMechanic = useCallback(async () => {
-    if (!selectedMechanic || !editMechanic.name.trim()) return
+    if (!selectedMechanic || !editMechanic.nombre.trim()) return
 
     try {
-      const updatedMechanic = await mecanicosApi.update(parseInt(selectedMechanic.id), {
-        nombre: editMechanic.name.trim()
+      const updatedMechanic: any = await mecanicosApi.update(parseInt(selectedMechanic.id), {
+        nombre: editMechanic.nombre.trim()
       })
       
       // Mapear el mecánico actualizado a la interfaz Mechanic
       const mecanicoActualizado: Mechanic = {
         ...selectedMechanic,
-        name: updatedMechanic.nombre,
+        name: updatedMechanic.nombre || '',
         updated_at: updatedMechanic.updated_at || new Date().toISOString()
       }
       
@@ -409,7 +411,8 @@ export function MechanicsSection() {
   const openEditDialog = useCallback((mechanic: Mechanic) => {
     setSelectedMechanic(mechanic)
     setEditMechanic({
-      name: mechanic.name,
+      nombre: mechanic.name,
+      id_nacional: "",
     })
     setIsEditDialogOpen(true)
   }, [])
@@ -633,8 +636,8 @@ export function MechanicsSection() {
                   <Label htmlFor="id_number">Número de Identificación</Label>
                   <Input
                     id="id_number"
-                    value={newMechanic.id_number || ""}
-                    onChange={(e) => setNewMechanic((prev) => ({ ...prev, id_number: e.target.value }))}
+                    value={newMechanic.id_nacional || ""}
+                    onChange={(e) => setNewMechanic((prev) => ({ ...prev, id_nacional: e.target.value }))}
                     placeholder="Ingresa el número de identificación"
                   />
                 </div>
@@ -642,8 +645,8 @@ export function MechanicsSection() {
                   <Label htmlFor="name">Nombre del Mecánico</Label>
                   <Input
                     id="name"
-                    value={newMechanic.name}
-                    onChange={(e) => setNewMechanic((prev) => ({ ...prev, name: e.target.value }))}
+                    value={newMechanic.nombre}
+                    onChange={(e) => setNewMechanic((prev) => ({ ...prev, nombre: e.target.value }))}
                     placeholder="Ingresa el nombre completo"
                   />
                 </div>
@@ -752,24 +755,6 @@ export function MechanicsSection() {
             </CardContent>
           </Card>
         </div>
-
-        {/* Información de actualización con diseño mejorado */}
-        {lastUpdated && (
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-white/20 shadow-lg">
-            <div className="text-center space-y-3">
-              <div className="flex items-center justify-center gap-3 text-sm text-slate-600">
-                <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse shadow-lg"></div>
-                <span className="font-semibold">Estadísticas actualizadas por última vez:</span>
-                <span className="text-slate-800 font-bold bg-slate-100 px-3 py-1 rounded-full">
-                  {lastUpdated.toLocaleString('es-ES')}
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 bg-slate-50 px-4 py-2 rounded-lg border border-slate-200">
-                💡 Las comisiones se calculan al 2% sobre la ganancia base (Mano de Obra - Costos Reales)
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* Search con diseño mejorado */}
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-white/20 shadow-lg">
@@ -994,8 +979,8 @@ export function MechanicsSection() {
               <Label htmlFor="edit-name">Nombre del Mecánico</Label>
               <Input
                 id="edit-name"
-                value={editMechanic.name}
-                onChange={(e) => setEditMechanic((prev) => ({ ...prev, name: e.target.value }))}
+                value={editMechanic.nombre}
+                onChange={(e) => setEditMechanic((prev) => ({ ...prev, nombre: e.target.value }))}
                 placeholder="Ingresa el nombre completo"
               />
             </div>
