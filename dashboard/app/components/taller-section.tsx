@@ -27,7 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Plus, Search, Eye, Edit, Trash2, DollarSign, Calendar, TrendingUp, RefreshCw, Wrench, Users, Zap, Droplets } from "lucide-react"
+import { Plus, Search, Eye, Edit, Trash2, DollarSign, Calendar, TrendingUp, RefreshCw, Wrench, Users, Zap, Droplets, CheckCircle, Clock } from "lucide-react"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { ErrorMessage } from "@/components/ui/error-message"
 import { mecanicosApi } from "@/lib/api-client"
@@ -39,6 +39,7 @@ interface GastoTaller {
   monto: number
   categoria: string
   fecha_gasto: string
+  estado: 'PENDIENTE' | 'PAGADO'
   created_at: string
   updated_at: string
 }
@@ -63,6 +64,7 @@ interface GastoTallerCreate {
   monto: number
   categoria: string
   fecha_gasto: string
+  estado?: 'PENDIENTE' | 'PAGADO'
 }
 
 interface PagoSalarioCreate {
@@ -97,6 +99,7 @@ export function TallerSection() {
   const [loadingGastos, setLoadingGastos] = useState(true)
   const [errorGastos, setErrorGastos] = useState<string | null>(null)
   const [searchTermGastos, setSearchTermGastos] = useState("")
+  const [filtroEstadoGastos, setFiltroEstadoGastos] = useState<'TODOS' | 'PENDIENTE' | 'PAGADO'>('TODOS')
   const [isCreateGastoDialogOpen, setIsCreateGastoDialogOpen] = useState(false)
   const [isViewGastoDialogOpen, setIsViewGastoDialogOpen] = useState(false)
   const [isEditGastoDialogOpen, setIsEditGastoDialogOpen] = useState(false)
@@ -106,14 +109,16 @@ export function TallerSection() {
     descripcion: "",
     monto: 0,
     categoria: "",
-    fecha_gasto: new Date().toISOString().split('T')[0]
+    fecha_gasto: new Date().toISOString().split('T')[0],
+    estado: 'PENDIENTE'
   })
   const [categoriaPersonalizada, setCategoriaPersonalizada] = useState("")
   const [editGasto, setEditGasto] = useState<GastoTallerCreate>({
     descripcion: "",
     monto: 0,
     categoria: "",
-    fecha_gasto: new Date().toISOString().split('T')[0]
+    fecha_gasto: new Date().toISOString().split('T')[0],
+    estado: 'PENDIENTE'
   })
   const [editCategoriaPersonalizada, setEditCategoriaPersonalizada] = useState("")
 
@@ -404,6 +409,7 @@ export function TallerSection() {
         monto: parseFloat(gasto.monto),
         categoria: gasto.categoria,
         fecha_gasto: gasto.fecha_gasto.split('T')[0], // Convertir a formato YYYY-MM-DD
+        estado: gasto.estado || 'PENDIENTE', // Incluir estado, por defecto PENDIENTE
         created_at: gasto.created_at,
         updated_at: gasto.updated_at
       }))
@@ -541,16 +547,26 @@ export function TallerSection() {
     }
   }, [])
 
-  // Filtrar gastos basado en término de búsqueda
+  // Filtrar gastos basado en término de búsqueda y estado
   const filteredGastos = useMemo(() => {
-    if (!searchTermGastos) return gastos
+    let gastosFiltrados = gastos
 
-    return gastos.filter(
-      (gasto) =>
-        gasto.descripcion.toLowerCase().includes(searchTermGastos.toLowerCase()) ||
-        gasto.categoria.toLowerCase().includes(searchTermGastos.toLowerCase())
-    )
-  }, [gastos, searchTermGastos])
+    // Filtrar por estado
+    if (filtroEstadoGastos !== 'TODOS') {
+      gastosFiltrados = gastosFiltrados.filter(gasto => gasto.estado === filtroEstadoGastos)
+    }
+
+    // Filtrar por término de búsqueda
+    if (searchTermGastos) {
+      gastosFiltrados = gastosFiltrados.filter(
+        (gasto) =>
+          gasto.descripcion.toLowerCase().includes(searchTermGastos.toLowerCase()) ||
+          gasto.categoria.toLowerCase().includes(searchTermGastos.toLowerCase())
+      )
+    }
+
+    return gastosFiltrados
+  }, [gastos, searchTermGastos, filtroEstadoGastos])
 
   // Estadísticas de gastos del taller
   const statsGastosTaller = useMemo(() => {
@@ -637,6 +653,7 @@ export function TallerSection() {
         monto: parseFloat(gastoCreado.monto),
         categoria: gastoCreado.categoria,
         fecha_gasto: gastoCreado.fecha_gasto.split('T')[0],
+        estado: gastoCreado.estado || 'PENDIENTE',
         created_at: gastoCreado.created_at,
         updated_at: gastoCreado.updated_at
       }
@@ -646,7 +663,8 @@ export function TallerSection() {
         descripcion: "",
         monto: 0,
         categoria: "",
-        fecha_gasto: new Date().toISOString().split('T')[0]
+        fecha_gasto: new Date().toISOString().split('T')[0],
+        estado: 'PENDIENTE'
       })
       setCategoriaPersonalizada("")
       setIsCreateGastoDialogOpen(false)
@@ -694,6 +712,7 @@ export function TallerSection() {
         monto: parseFloat(gastoActualizado.monto),
         categoria: gastoActualizado.categoria,
         fecha_gasto: gastoActualizado.fecha_gasto.split('T')[0],
+        estado: gastoActualizado.estado || 'PENDIENTE',
         created_at: gastoActualizado.created_at,
         updated_at: gastoActualizado.updated_at
       }
@@ -744,6 +763,39 @@ export function TallerSection() {
       }
     }
   }, [selectedGasto])
+
+  const handleCambiarEstadoGasto = useCallback(async (gastoId: string) => {
+    try {
+      const response = await fetch(buildApiUrl(`/gastos-taller/${gastoId}/estado`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nuevo_estado: 'PAGADO' })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      // Actualizar el gasto en la lista local directamente a PAGADO
+      setGastos(prev => prev.map(gasto => 
+        gasto.id === gastoId 
+          ? { ...gasto, estado: 'PAGADO' }
+          : gasto
+      ))
+      
+      console.log(`✅ Gasto ${gastoId} marcado como PAGADO`)
+    } catch (error) {
+      console.error("❌ Error al marcar gasto como pagado:", error)
+      if (error instanceof Error) {
+        console.error("❌ Detalles del error:", {
+          message: error.message,
+          stack: error.stack
+        })
+      } else {
+        console.error("❌ Error desconocido:", error)
+      }
+    }
+  }, [])
 
   // Nueva función para verificar si es quincena (semana 2 o 4)
   const esQuincena = useCallback((semana: string) => {
@@ -1217,7 +1269,8 @@ export function TallerSection() {
       descripcion: gasto.descripcion,
       monto: gasto.monto,
       categoria: gasto.categoria,
-      fecha_gasto: gasto.fecha_gasto
+      fecha_gasto: gasto.fecha_gasto,
+      estado: gasto.estado
     })
     
     // Si la categoría no está en las predefinidas, es una categoría personalizada
@@ -1498,14 +1551,33 @@ export function TallerSection() {
           {/* CONTENIDO DE GASTOS */}
           {mostrarGastos && (
             <>
-              <div className="flex items-center py-4">
-                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                <Input
-                  placeholder="Buscar gastos..."
-                  value={searchTermGastos}
-                  onChange={(e) => setSearchTermGastos(e.target.value)}
-                  className="max-w-sm"
-                />
+              <div className="flex items-center gap-4 py-4">
+                <div className="flex items-center">
+                  <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                  <Input
+                    placeholder="Buscar gastos..."
+                    value={searchTermGastos}
+                    onChange={(e) => setSearchTermGastos(e.target.value)}
+                    className="max-w-sm"
+                  />
+                </div>
+                
+                {/* Select de filtro por estado */}
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="filtro-estado" className="text-sm font-medium text-gray-700">
+                    Estado:
+                  </Label>
+                  <select
+                    id="filtro-estado"
+                    value={filtroEstadoGastos}
+                    onChange={(e) => setFiltroEstadoGastos(e.target.value as 'TODOS' | 'PENDIENTE' | 'PAGADO')}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="TODOS">Todos</option>
+                    <option value="PENDIENTE">Pendientes</option>
+                    <option value="PAGADO">Pagados</option>
+                  </select>
+                </div>
               </div>
 
               {loadingGastos ? (
@@ -1524,6 +1596,7 @@ export function TallerSection() {
                         <TableHead>Categoría</TableHead>
                         <TableHead>Monto</TableHead>
                         <TableHead>Fecha</TableHead>
+                        <TableHead>Estado</TableHead>
                         <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1547,6 +1620,14 @@ export function TallerSection() {
                             <TableCell>
                               {new Date(gasto.fecha_gasto).toLocaleDateString('es-CR')}
                             </TableCell>
+                            <TableCell>
+                              <Badge 
+                                variant={gasto.estado === 'PAGADO' ? 'default' : 'secondary'}
+                                className={gasto.estado === 'PAGADO' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}
+                              >
+                                {gasto.estado}
+                              </Badge>
+                            </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-1">
                                 <Button
@@ -1565,6 +1646,20 @@ export function TallerSection() {
                                 >
                                   <Edit className="h-4 w-4" />
                                 </Button>
+                                
+                                {/* Botón para cambiar estado - Solo mostrar si está pendiente */}
+                                {gasto.estado === 'PENDIENTE' && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 text-yellow-600 hover:text-green-600 hover:bg-green-50"
+                                    onClick={() => handleCambiarEstadoGasto(gasto.id)}
+                                    title="Marcar como pagado"
+                                  >
+                                    <Clock className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -1670,7 +1765,7 @@ export function TallerSection() {
                 id="descripcion"
                 value={newGasto.descripcion}
                 onChange={(e) => setNewGasto(prev => ({ ...prev, descripcion: e.target.value }))}
-                placeholder="Ej: Pago de luz del mes"
+                placeholder="Desc..."
               />
             </div>
                          <div>
@@ -1722,6 +1817,19 @@ export function TallerSection() {
                 value={newGasto.fecha_gasto}
                 onChange={(e) => setNewGasto(prev => ({ ...prev, fecha_gasto: e.target.value }))}
               />
+            </div>
+            
+            <div>
+              <Label htmlFor="estado_gasto">Estado del Gasto</Label>
+              <select
+                id="estado_gasto"
+                value={newGasto.estado || 'PENDIENTE'}
+                onChange={(e) => setNewGasto(prev => ({ ...prev, estado: e.target.value as 'PENDIENTE' | 'PAGADO' }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="PENDIENTE">Pendiente</option>
+                <option value="PAGADO">Pagado</option>
+              </select>
             </div>
           </div>
           <DialogFooter>
@@ -2180,6 +2288,18 @@ export function TallerSection() {
                     <span>{new Date(selectedGasto.fecha_gasto).toLocaleDateString()}</span>
                   </div>
                 </div>
+
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Estado</p>
+                  <div className="flex items-center gap-2">
+                    <Badge 
+                      variant={selectedGasto.estado === 'PAGADO' ? 'default' : 'secondary'}
+                      className={selectedGasto.estado === 'PAGADO' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}
+                    >
+                      {selectedGasto.estado}
+                    </Badge>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -2207,7 +2327,7 @@ export function TallerSection() {
                 id="edit_descripcion"
                 value={editGasto.descripcion}
                 onChange={(e) => setEditGasto(prev => ({ ...prev, descripcion: e.target.value }))}
-                placeholder="Ej: Pago de luz del mes"
+                placeholder="Pagos"
               />
             </div>
                          <div>
@@ -2259,6 +2379,22 @@ export function TallerSection() {
                 value={editGasto.fecha_gasto}
                 onChange={(e) => setEditGasto(prev => ({ ...prev, fecha_gasto: e.target.value }))}
               />
+            </div>
+            
+            <div>
+              <Label htmlFor="edit_estado_gasto">Estado del Gasto</Label>
+              <select
+                id="edit_estado_gasto"
+                value={editGasto.estado || 'PENDIENTE'}
+                onChange={(e) => setEditGasto(prev => ({ ...prev, estado: e.target.value as 'PENDIENTE' | 'PAGADO' }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="PENDIENTE">Pendiente</option>
+                <option value="PAGADO">Pagado</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                💡 Los gastos pendientes no se incluyen en los reportes hasta que se marquen como pagados
+              </p>
             </div>
           </div>
           <DialogFooter>

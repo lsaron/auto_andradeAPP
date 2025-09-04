@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.models.database import get_db
-from app.models.gastos_taller import GastoTaller as GastoTallerModel
-from app.schemas.gastos_taller import GastoTallerCreate, GastoTallerUpdate, GastoTaller
+from app.models.gastos_taller import GastoTaller as GastoTallerModel, EstadoGasto
+from app.schemas.gastos_taller import GastoTallerCreate, GastoTallerUpdate, GastoTaller, EstadoGasto as EstadoGastoSchema
 from typing import List, Optional
 from datetime import datetime, timedelta
 
@@ -32,6 +32,7 @@ def listar_gastos_taller(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     categoria: Optional[str] = Query(None),
+    estado: Optional[EstadoGastoSchema] = Query(None),
     fecha_inicio: Optional[datetime] = Query(None),
     fecha_fin: Optional[datetime] = Query(None),
     db: Session = Depends(get_db)
@@ -43,6 +44,9 @@ def listar_gastos_taller(
         # Aplicar filtros
         if categoria:
             query = query.filter(GastoTallerModel.categoria.ilike(f"%{categoria}%"))
+        
+        if estado:
+            query = query.filter(GastoTallerModel.estado == estado)
         
         if fecha_inicio:
             query = query.filter(GastoTallerModel.fecha_gasto >= fecha_inicio)
@@ -112,10 +116,46 @@ def eliminar_gasto_taller(gasto_id: int, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error al eliminar gasto: {str(e)}")
 
+@router.patch("/{gasto_id}/estado", response_model=GastoTaller)
+def cambiar_estado_gasto(
+    gasto_id: int, 
+    request_data: dict,
+    db: Session = Depends(get_db)
+):
+    """Cambiar el estado de un gasto (PENDIENTE o PAGADO)"""
+    try:
+        db_gasto = db.query(GastoTallerModel).filter(GastoTallerModel.id == gasto_id).first()
+        if not db_gasto:
+            raise HTTPException(status_code=404, detail="Gasto no encontrado")
+        
+        # Obtener el nuevo estado del request body
+        nuevo_estado_str = request_data.get('nuevo_estado')
+        if not nuevo_estado_str:
+            raise HTTPException(status_code=400, detail="Campo 'nuevo_estado' es requerido")
+        
+        # Validar que el estado sea válido
+        if nuevo_estado_str not in ['PENDIENTE', 'PAGADO']:
+            raise HTTPException(status_code=400, detail="Estado debe ser 'PENDIENTE' o 'PAGADO'")
+        
+        # Convertir el string al enum del modelo
+        estado_modelo = EstadoGasto(nuevo_estado_str)
+        db_gasto.estado = estado_modelo
+        db_gasto.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(db_gasto)
+        return db_gasto
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al cambiar estado del gasto: {str(e)}")
+
 @router.get("/estadisticas/resumen")
 def obtener_estadisticas_gastos(
     fecha_inicio: Optional[datetime] = Query(None),
     fecha_fin: Optional[datetime] = Query(None),
+    solo_pagados: bool = Query(True, description="Incluir solo gastos pagados en las estadísticas"),
     db: Session = Depends(get_db)
 ):
     """Obtener estadísticas de gastos del taller"""
@@ -127,6 +167,10 @@ def obtener_estadisticas_gastos(
             query = query.filter(GastoTallerModel.fecha_gasto >= fecha_inicio)
         if fecha_fin:
             query = query.filter(GastoTallerModel.fecha_gasto <= fecha_fin)
+        
+        # Filtrar por estado si se solicita solo gastos pagados
+        if solo_pagados:
+            query = query.filter(GastoTallerModel.estado == EstadoGasto.PAGADO)
         
         # Calcular estadísticas
         total_gastos = query.count()
