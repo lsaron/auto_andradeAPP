@@ -762,14 +762,35 @@ export function CarsSection() {
 
       console.log("🔍 Datos transformados:", transformed)
 
-      // Siempre reemplazar los datos, no concatenar
-      setCars(transformed)
-      setFilteredCars(transformed)
-      setTotalCars(transformed.length)
-      
-      // Como no hay paginación real en el backend, siempre marcamos que no hay más
-      setHasMore(false)
-      setPage(1)
+      // Ordenar por ID descendente (más recientes primero)
+      const sortedCars = transformed.sort((a: Car, b: Car) => {
+        // Usar la placa como criterio de ordenamiento
+        return b.licensePlate.localeCompare(a.licensePlate)
+      })
+
+      if (reset) {
+        // Mostrar solo los primeros 30 vehículos
+        const limitedCars = sortedCars.slice(0, 30)
+        setCars(limitedCars)
+        setFilteredCars(limitedCars)
+        
+        // Verificar si hay más vehículos
+        setHasMore(sortedCars.length > 30)
+        setTotalCars(sortedCars.length)
+      } else {
+        // Cargar más vehículos (siguientes 20)
+        const startIndex = cars.length
+        const endIndex = startIndex + 20
+        const moreCars = sortedCars.slice(startIndex, endIndex)
+        
+        setCars((prev) => [...prev, ...moreCars])
+        setFilteredCars((prev) => [...prev, ...moreCars])
+        
+        // Verificar si hay más vehículos por cargar
+        setHasMore(endIndex < sortedCars.length)
+      }
+
+      setPage(pageNum)
     } catch (err) {
       setError(err instanceof Error ? err : new Error("Error cargando vehículos"))
       if (reset) {
@@ -1449,13 +1470,11 @@ export function CarsSection() {
                         <div className="text-2xl font-bold text-green-600">
                           {formatCurrency(
                             selectedCarWorkHistory.reduce((sum, order) => {
-                              // Ganancia neta = Ganancia por Repuestos + Ganancia Base
-                              // Según el detalle del trabajo: ₡20,000 + ₡80,000 = ₡100,000
-                              const gananciaRepuestos = order.expenseDetails && order.expenseDetails.length > 0 
-                                ? getTotalMarkup(order) 
-                                : 0;
-                              const gananciaBase = (order.manoObra || 0) - order.expenses;
-                              return sum + gananciaRepuestos + gananciaBase;
+                              // Ganancia real = Total cobrado - Gastos reales
+                              const totalCobrado = order.totalCost;
+                              const gastosReales = order.expenses;
+                              const gananciaReal = totalCobrado - gastosReales;
+                              return sum + gananciaReal;
                             }, 0),
                           )}
                         </div>
@@ -1679,10 +1698,10 @@ export function CarsSection() {
                           <div className="text-right space-y-1">
                             <div className="text-xl font-bold text-green-600">{formatCurrency(order.totalCost)}</div>
                             <div className="text-xs text-gray-600">
-                              Ganancia Base: {formatCurrency((order.manoObra || 0) - order.expenses)}
+                              Gastos: {formatCurrency(order.expenses)}
                             </div>
                             <div className="text-xs text-blue-600">
-                              Ganancia: {formatCurrency(((order.manoObra || 0) - order.expenses) + getTotalMarkup(order))}
+                              Ganancia: {formatCurrency(order.totalCost - order.expenses)}
                             </div>
                           </div>
                         </div>
@@ -1713,20 +1732,22 @@ export function CarsSection() {
 
                           {/* Ganancia por Repuestos */}
                           {(() => {
-                            const gananciaRepuestos = order.parts?.reduce((total, part) => {
-                              const costoReal = part.cost * part.quantity;
-                              const precioCobrado = part.costCharged * part.quantity;
-                              const ganancia = precioCobrado - costoReal;
-                              return total + (ganancia > 0 ? ganancia : 0);
-                            }, 0) || 0;
-                            
-                            if (gananciaRepuestos > 0) {
-                              return (
-                                <div className="flex justify-between items-center py-1 text-green-600">
-                                  <span className="text-sm font-medium">Ganancia por Repuestos:</span>
-                                  <span className="font-semibold">+{formatCurrency(gananciaRepuestos)}</span>
-                                </div>
-                              );
+                            if (order.expenseDetails && order.expenseDetails.length > 0) {
+                              const gananciaRepuestos = order.expenseDetails.reduce((total, expense) => {
+                                const costoReal = Number(expense.amount) || 0;
+                                const precioCliente = Number(expense.amountCharged) || costoReal;
+                                const ganancia = precioCliente - costoReal;
+                                return total + (ganancia > 0 ? ganancia : 0);
+                              }, 0);
+                              
+                              if (gananciaRepuestos > 0) {
+                                return (
+                                  <div className="flex justify-between items-center py-1 text-green-600">
+                                    <span className="text-sm font-medium">Ganancia por Repuestos:</span>
+                                    <span className="font-semibold">+{formatCurrency(gananciaRepuestos)}</span>
+                                  </div>
+                                );
+                              }
                             }
                             return null;
                           })()}
@@ -1777,16 +1798,7 @@ export function CarsSection() {
 
                           <div className="grid gap-2 sm:grid-cols-2 text-xs text-muted-foreground pt-2 border-t">
                             <div>Total Gastos: {formatCurrency(order.expenses)}</div>
-                            <div>Ganancia Neta: {formatCurrency((() => {
-                              const gananciaBase = order.totalCost - order.expenses;
-                              const gananciaRepuestos = order.parts?.reduce((total, part) => {
-                                const costoReal = part.cost * part.quantity;
-                                const precioCobrado = part.costCharged * part.quantity;
-                                const ganancia = precioCobrado - costoReal;
-                                return total + (ganancia > 0 ? ganancia : 0);
-                              }, 0) || 0;
-                              return gananciaBase + gananciaRepuestos;
-                            })())}</div>
+                            <div>Ganancia Neta: {formatCurrency(order.totalCost - order.expenses)}</div>
                           </div>
                         </div>
                       </CardContent>
@@ -2106,13 +2118,12 @@ export function CarsSection() {
                   <div className="text-2xl font-bold text-blue-600">
                     {formatCurrency(
                       selectedCarWorkHistory.reduce((sum, order) => {
-                        // Ganancia Base = Mano de Obra - Gastos Reales
-                        const gananciaBase = (order.manoObra || 0) - order.expenses;
-                        return sum + gananciaBase;
+                        // Total cobrado al cliente
+                        return sum + order.totalCost;
                       }, 0)
                     )}
                   </div>
-                  <div className="text-sm text-blue-700">Ganancia Base</div>
+                  <div className="text-sm text-blue-700">Ingresos Totales</div>
                 </CardContent>
               </Card>
               
@@ -2121,14 +2132,12 @@ export function CarsSection() {
                   <div className="text-2xl font-bold text-purple-600">
                     {formatCurrency(
                       selectedCarWorkHistory.reduce((sum, order) => {
-                        if (order.expenseDetails && order.expenseDetails.length > 0) {
-                          return sum + getTotalMarkup(order);
-                        }
-                        return sum + 0;
+                        // Gastos reales
+                        return sum + order.expenses;
                       }, 0)
                     )}
                   </div>
-                  <div className="text-sm text-purple-700">Ganancia Repuestos</div>
+                  <div className="text-sm text-purple-700">Gastos Totales</div>
                 </CardContent>
               </Card>
               
@@ -2137,12 +2146,8 @@ export function CarsSection() {
                   <div className="text-2xl font-bold text-green-600">
                     {formatCurrency(
                       selectedCarWorkHistory.reduce((sum, order) => {
-                        // Ganancia Total = Ganancia Base + Ganancia Repuestos
-                        const gananciaBase = (order.manoObra || 0) - order.expenses;
-                        const gananciaRepuestos = order.expenseDetails && order.expenseDetails.length > 0 
-                          ? getTotalMarkup(order) 
-                          : 0;
-                        return sum + gananciaBase + gananciaRepuestos;
+                        // Ganancia = Total Cobrado - Gastos Reales
+                        return sum + (order.totalCost - order.expenses);
                       }, 0)
                     )}
                   </div>

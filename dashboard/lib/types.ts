@@ -112,6 +112,7 @@ export interface GastoTaller {
   monto: number
   categoria: string
   fecha_gasto: string
+  estado: 'PENDIENTE' | 'PAGADO'
   created_at: string
   updated_at: string
 }
@@ -137,6 +138,7 @@ export interface PagoSalario {
   monto_salario: number
   semana_pago: string
   fecha_pago: string
+  estado: 'PENDIENTE' | 'PAGADO'
   created_at: string
 }
 

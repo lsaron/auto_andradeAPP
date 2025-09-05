@@ -41,7 +41,8 @@ interface Vehicle {
 export function ClientsSection() {
   const [clients, setClients] = useState<Client[]>([])
   const [clientVehicles, setClientVehicles] = useState<Record<string, Vehicle[]>>({})
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false)
@@ -52,6 +53,12 @@ export function ClientsSection() {
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [validationError, setValidationError] = useState<string>("")
+  
+  // Estados de paginación
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+  const [totalClients, setTotalClients] = useState(0)
+  const [filteredClients, setFilteredClients] = useState<Client[]>([])
   const [newClient, setNewClient] = useState<ClientCreate>({
     id_nacional: "",
     name: "",
@@ -110,7 +117,8 @@ export function ClientsSection() {
 
   // Load clients on component mount
   useEffect(() => {
-    loadClients()
+    console.log("🔍 useEffect triggered - loading clients")
+    loadClients(1, true)
   }, [])
 
   // Debounced search functionality
@@ -125,10 +133,22 @@ export function ClientsSection() {
   }, [searchTerm])
 
   // API Functions
-  const loadClients = async () => {
+  const loadClients = async (pageNum: number, reset = false) => {
+    console.log("🔍 loadClients called with:", { pageNum, reset, loading })
+    
+    if (loading) {
+      console.log("🔍 loadClients: already loading, skipping")
+      return
+    }
+
     try {
+      console.log("🔍 loadClients: starting to load")
       setLoading(true)
       setError(null)
+      
+      if (reset) {
+        setInitialLoading(true)
+      }
       
       const response = await fetch("http://localhost:8000/api/clientes/")
       if (!response.ok) {
@@ -136,7 +156,8 @@ export function ClientsSection() {
       }
       
       const data = await response.json()
-      console.log("📋 Clients data:", data)
+      console.log("📋 Clients data received:", data)
+      console.log("📋 Number of clients:", data.length)
       
       // Transform backend data to frontend format
       const transformedClients: Client[] = data.map((cliente: any) => ({
@@ -150,16 +171,63 @@ export function ClientsSection() {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }))
-      
-      setClients(transformedClients)
-      
-      // Load vehicles for each client
-      await loadClientVehicles(transformedClients)
-      
+
+      // Ordenar por ID descendente (más recientes primero)
+      const sortedClients = transformedClients.sort((a, b) => {
+        // Usar el ID nacional como criterio de ordenamiento
+        return b.id.localeCompare(a.id)
+      })
+
+      if (reset) {
+        // Mostrar solo los primeros 30 clientes
+        const limitedClients = sortedClients.slice(0, 30)
+        console.log("🔍 Reset mode - limitedClients:", limitedClients.length)
+        setClients(limitedClients)
+        setFilteredClients(limitedClients)
+        console.log("🔍 Clients state updated, limitedClients:", limitedClients)
+        
+        // Verificar si hay más clientes
+        setHasMore(sortedClients.length > 30)
+        setTotalClients(sortedClients.length)
+        console.log("🔍 Reset mode - hasMore:", sortedClients.length > 30, "totalClients:", sortedClients.length)
+        
+        // Load vehicles for the limited clients (async, no await)
+        loadClientVehicles(limitedClients).catch(error => {
+          console.error("Error loading client vehicles:", error)
+        })
+      } else {
+        // Cargar más clientes (siguientes 20)
+        const currentLength = clients.length
+        const startIndex = currentLength
+        const endIndex = startIndex + 20
+        const moreClients = sortedClients.slice(startIndex, endIndex)
+        
+        console.log("🔍 Load more mode - currentLength:", currentLength, "moreClients:", moreClients.length)
+        
+        setClients((prev) => [...prev, ...moreClients])
+        setFilteredClients((prev) => [...prev, ...moreClients])
+        
+        // Verificar si hay más clientes por cargar
+        setHasMore(endIndex < sortedClients.length)
+        
+        // Load vehicles for the new clients (async, no await)
+        loadClientVehicles(moreClients).catch(error => {
+          console.error("Error loading client vehicles:", error)
+        })
+      }
+
+      setPage(pageNum)
     } catch (err) {
       setError(err instanceof Error ? err : new Error("Error cargando clientes"))
+      if (reset) {
+        setClients([])
+        setFilteredClients([])
+      }
     } finally {
       setLoading(false)
+      if (reset) {
+        setInitialLoading(false)
+      }
     }
   }
 
@@ -196,6 +264,16 @@ export function ClientsSection() {
               console.log(`📊 Updated client ${client.name} with ${vehicles.length} vehicles`)
               return updated
             })
+            
+            // Also update filteredClients
+            setFilteredClients(prev => {
+              const updated = prev.map(c => 
+                c.id === client.id 
+                  ? { ...c, vehicle_count: vehicles.length }
+                  : c
+              )
+              return updated
+            })
           }
         } catch (error) {
           console.error(`Error loading vehicles for client ${client.id}:`, error)
@@ -211,17 +289,17 @@ export function ClientsSection() {
   }
 
   // Filter clients based on search term
-  const filteredClients = useMemo(() => {
-    if (!debouncedSearchTerm) return clients
+  const displayClients = useMemo(() => {
+    if (!debouncedSearchTerm) return filteredClients
 
-    return clients.filter(
+    return filteredClients.filter(
       (client) =>
         client.id.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
         client.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
         client.email.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
         client.phone.includes(debouncedSearchTerm),
     )
-  }, [clients, debouncedSearchTerm])
+  }, [filteredClients, debouncedSearchTerm])
 
   const handleAddClient = useCallback(async () => {
     // Clear previous validation errors
@@ -267,7 +345,7 @@ export function ClientsSection() {
       }
 
       // Reload clients after adding
-      await loadClients()
+      await loadClients(1, true)
 
       setNewClient({
         id_nacional: "",
@@ -309,7 +387,7 @@ export function ClientsSection() {
         }
 
         // Reload clients after updating
-        await loadClients()
+        await loadClients(1, true)
 
         setEditClient({
           id_nacional: "",
@@ -343,7 +421,7 @@ export function ClientsSection() {
         }
 
         // Reload clients after deleting
-        await loadClients()
+        await loadClients(1, true)
 
         setClientToDelete(null)
         setIsDeleteConfirmOpen(false)
@@ -376,6 +454,13 @@ export function ClientsSection() {
     setClientToDelete(client)
     setIsDeleteConfirmOpen(true)
   }, [])
+
+  // Función para cargar más clientes
+  const handleLoadMore = () => {
+    if (!loading && hasMore && !searchTerm) {
+      loadClients(page + 1, false)
+    }
+  }
 
   const handleClearSearch = useCallback(() => {
     setSearchTerm("")
@@ -557,7 +642,7 @@ export function ClientsSection() {
           <div className="text-sm text-muted-foreground mt-2">
             {searchTerm ? (
               <>
-                Mostrando {filteredClients.length} de {clients.length} clientes
+                Mostrando {displayClients.length} de {filteredClients.length} clientes
               </>
             ) : (
               <>Total: {clients.length} clientes</>
@@ -577,7 +662,7 @@ export function ClientsSection() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredClients.map((client) => (
+                {displayClients.map((client) => (
                   <TableRow key={client.id} className="hover:bg-gray-50">
                     <TableCell className="font-medium">{client.name}</TableCell>
                     <TableCell>
@@ -631,9 +716,32 @@ export function ClientsSection() {
               </TableBody>
             </Table>
 
-            {filteredClients.length === 0 && searchTerm && (
+            {displayClients.length === 0 && searchTerm && (
               <div className="text-center py-8 text-muted-foreground">
                 No se encontraron clientes que coincidan con "{searchTerm}"
+              </div>
+            )}
+
+            {/* Botón Cargar Más */}
+            {!searchTerm && hasMore && (
+              <div className="flex justify-center mt-6">
+                <Button
+                  onClick={handleLoadMore}
+                  disabled={loading}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2"
+                >
+                  {initialLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Cargando...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Cargar más clientes
+                    </>
+                  )}
+                </Button>
               </div>
             )}
           </div>

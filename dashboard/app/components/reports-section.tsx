@@ -211,6 +211,19 @@ interface PagoSalario {
   mecanico_nombre?: string
 }
 
+interface ComisionMecanico {
+  id: number
+  id_trabajo: number
+  id_mecanico: number
+  ganancia_trabajo: number
+  porcentaje_comisi: number
+  monto_comision: number
+  fecha_calculo: string
+  mes_reporte: number
+  estado_comision: string
+  quincena: number
+}
+
 
 
 interface MonthlyReport {
@@ -249,7 +262,9 @@ export default function ReportsSection() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([])
   const [gastosTaller, setGastosTaller] = useState<GastoTaller[]>([])
   const [pagosSalarios, setPagosSalarios] = useState<PagoSalario[]>([])
+  const [comisionesMecanicos, setComisionesMecanicos] = useState<ComisionMecanico[]>([])
   const [mecanicos, setMecanicos] = useState<Mechanic[]>([])
+  const [comisionesPorMecanico, setComisionesPorMecanico] = useState<{[key: string]: number}>({})
   
   // Estados de control
   const [loading, setLoading] = useState(true)
@@ -320,29 +335,47 @@ export default function ReportsSection() {
     return total
   }, [pagosSalarios, selectedYear, selectedMonth])
 
-  // Función para calcular comisiones del mecánico en el mes seleccionado
-  const calcularComisionesMecanico = useCallback((mecanicoId: string) => {
-    if (!selectedYear || !selectedMonth) return 0
+  // Función para cargar comisiones de todos los mecánicos
+  const cargarComisionesMecanicos = useCallback(async () => {
+    if (!selectedYear || !selectedMonth || mecanicos.length === 0) return
     
-    const trabajosDelMes = workOrders.filter(trabajo => {
-      const fechaTrabajo = new Date(trabajo.fecha)
-      const añoTrabajo = fechaTrabajo.getFullYear()
-      const mesTrabajo = fechaTrabajo.getMonth() + 1
+    try {
+      const comisionesMap: {[key: string]: number} = {}
       
-      return añoTrabajo === parseInt(selectedYear) && 
-             mesTrabajo === parseInt(selectedMonth) &&
-             trabajo.mecanicos_ids.includes(parseInt(mecanicoId))
-    })
-    
-    // Calcular comisiones (2% de la ganancia base por trabajo)
-    return trabajosDelMes.reduce((total, trabajo) => {
-      const gananciaBase = trabajo.mano_obra || 0
-      const comisionPorTrabajo = gananciaBase * 0.02
-      // La comisión se divide entre todos los mecánicos del trabajo
-      const comisionPorMecanico = comisionPorTrabajo / (trabajo.mecanicos_ids.length || 1)
-      return total + comisionPorMecanico
-    }, 0)
-  }, [workOrders, selectedYear, selectedMonth])
+      // Cargar estadísticas de cada mecánico (igual que mechanics-section)
+      for (const mecanico of mecanicos) {
+        try {
+          const response = await fetch(buildApiUrl(`/mecanicos/${mecanico.id}/estadisticas`))
+          if (!response.ok) {
+            console.error(`Error al obtener estadísticas del mecánico ${mecanico.id}:`, response.statusText)
+            comisionesMap[mecanico.id] = 0
+            continue
+          }
+          
+          const statsData = await response.json()
+          console.log(`🔍 Estadísticas del mecánico ${mecanico.id}:`, statsData)
+          
+          // Usar las comisiones del mes que ya vienen calculadas del backend
+          const comisionesDelMes = parseFloat(statsData.comisiones_mes?.toString() || '0')
+          
+          comisionesMap[mecanico.id] = comisionesDelMes
+        } catch (error) {
+          console.error(`Error al cargar estadísticas del mecánico ${mecanico.id}:`, error)
+          comisionesMap[mecanico.id] = 0
+        }
+      }
+      
+      console.log('🔍 Comisiones cargadas:', comisionesMap)
+      setComisionesPorMecanico(comisionesMap)
+    } catch (error) {
+      console.error('Error al cargar comisiones de mecánicos:', error)
+    }
+  }, [mecanicos, selectedYear, selectedMonth])
+
+  // Función para obtener comisiones del mecánico desde el estado
+  const calcularComisionesMecanico = useCallback((mecanicoId: string) => {
+    return comisionesPorMecanico[mecanicoId] || 0
+  }, [comisionesPorMecanico])
 
   // Función para calcular ganancia base del mecánico en el mes seleccionado
   const calcularGananciaBaseMecanico = useCallback((mecanicoId: string) => {
@@ -440,6 +473,7 @@ export default function ReportsSection() {
       setWorkOrders(workOrdersWithDetails)
       setGastosTaller(gastosData)
       setPagosSalarios(salariosData)
+      setComisionesMecanicos([]) // Inicializar como lista vacía, se calcularán dinámicamente
       setMecanicos(mappedMechanics)
 
       // Procesar años y meses disponibles
@@ -569,18 +603,9 @@ export default function ReportsSection() {
   const calcularComisionesTotales = useCallback((): number => {
     if (!selectedYear || !selectedMonth) return 0
     
-    return workOrders
-      .filter(wo => {
-        const fecha = new Date(wo.fecha)
-        const año = fecha.getFullYear()
-        const mes = fecha.getMonth() + 1
-        return año === parseInt(selectedYear) && mes === parseInt(selectedMonth)
-      })
-      .reduce((total, trabajo) => {
-        const comisionTrabajo = (trabajo.mano_obra || 0) * 0.15 // 15% de comisión
-        return total + comisionTrabajo
-      }, 0)
-  }, [workOrders, selectedYear, selectedMonth])
+    // Sumar las comisiones reales de todos los mecánicos (ya filtradas por el backend)
+    return Object.values(comisionesPorMecanico).reduce((total, comision) => total + comision, 0)
+  }, [comisionesPorMecanico, selectedYear, selectedMonth])
 
   // Función para calcular comisiones totales del mes anterior
   const calcularComisionesTotalesAnterior = useCallback((): number => {
@@ -597,6 +622,7 @@ export default function ReportsSection() {
       previousYear = currentYear - 1
     }
 
+    // Para el mes anterior, usar el cálculo basado en trabajos (ya que no tenemos datos históricos de comisiones)
     return workOrders
       .filter(wo => {
         const fecha = new Date(wo.fecha)
@@ -605,7 +631,8 @@ export default function ReportsSection() {
         return año === previousYear && mes === previousMonth
       })
       .reduce((total, trabajo) => {
-        const comisionTrabajo = (trabajo.mano_obra || 0) * 0.15 // 15% de comisión
+        // Calcular comisión como 2% de la mano de obra
+        const comisionTrabajo = (trabajo.mano_obra || 0) * 0.02
         return total + comisionTrabajo
       }, 0)
   }, [workOrders, selectedYear, selectedMonth])
@@ -634,29 +661,54 @@ export default function ReportsSection() {
         return añoTrabajo === año && mesTrabajo === mes
       })
       
-      // Filtrar gastos del mes
+      // Filtrar gastos del mes (solo PAGADOS)
       const gastosMes = gastosTaller.filter(g => {
         const fechaGasto = new Date(g.fecha_gasto)
         const añoGasto = fechaGasto.getFullYear()
         const mesGasto = fechaGasto.getMonth() + 1
-        return añoGasto === año && mesGasto === mes
+        return añoGasto === año && mesGasto === mes && (g as any).estado === 'PAGADO'
       })
       
-      // Filtrar salarios del mes
+      // Filtrar salarios del mes (solo PAGADOS)
       const salariosMes = pagosSalarios.filter(p => {
         const fechaPago = new Date(p.fecha_pago)
         const añoPago = fechaPago.getFullYear()
         const mesPago = fechaPago.getMonth() + 1
-        return añoPago === año && mesPago === mes
+        return añoPago === año && mesPago === mes && (p as any).estado === 'PAGADO'
       })
       
       // Calcular totales
       const ingresos = trabajosMes.reduce((sum, wo) => sum + (wo.mano_obra || 0) + (wo.markup_repuestos || 0), 0)
       const gastosTallerTotal = gastosMes.reduce((sum, g) => sum + Number(g.monto || 0), 0)
       const salariosTotal = salariosMes.reduce((sum, p) => sum + Number(p.monto_salario || 0), 0)
-      const comisionesTotal = trabajosMes.reduce((sum, wo) => sum + (wo.mano_obra || 0) * 0.15, 0)
+      
+      // Para comisiones, usar las comisiones reales aprobadas del mes actual
+      let comisionesTotal = 0
+      if (mes === parseInt(selectedMonth) && año === parseInt(selectedYear)) {
+        // Para el mes actual, usar las comisiones reales aprobadas
+        comisionesTotal = Object.values(comisionesPorMecanico).reduce((total, comision) => total + comision, 0)
+      } else {
+        // Para meses anteriores, usar el cálculo basado en trabajos (ya que no tenemos datos históricos)
+        comisionesTotal = trabajosMes.reduce((sum, wo) => sum + (wo.mano_obra || 0) * 0.02, 0)
+      }
+      
       const gastos = gastosTallerTotal + salariosTotal + comisionesTotal
-      const ganancias = ingresos - gastos
+      
+      // Las ganancias netas son la suma de mano_obra + markup_repuestos (no se restan comisiones)
+      const ganancias = trabajosMes.reduce((sum, wo) => sum + (wo.mano_obra || 0) + (wo.markup_repuestos || 0), 0)
+      
+      // Debug para septiembre
+      if (mes === 9 && año === 2025) {
+        console.log('🔍 DEBUG Septiembre 2025:', {
+          trabajosMes: trabajosMes.length,
+          ingresos,
+          gastosTallerTotal,
+          salariosTotal,
+          comisionesTotal,
+          gastos,
+          ganancias
+        })
+      }
       
       datos.push({
         mes: getMonthName(mes),
@@ -672,7 +724,7 @@ export default function ReportsSection() {
     
     console.log('📊 Datos históricos para gráfico:', datos)
     return datos
-  }, [workOrders, gastosTaller, pagosSalarios])
+  }, [workOrders, gastosTaller, pagosSalarios, comisionesPorMecanico, selectedYear, selectedMonth])
 
 
   // Función para generar reporte mensual
@@ -755,8 +807,11 @@ export default function ReportsSection() {
       return sum + detallesGastos
     }, 0)
 
-    // Calcular gastos totales (taller + salarios)
-    const totalExpenses = gastosTallerTotal + salariosTotal
+    // Calcular comisiones del mes (solo aprobadas)
+    const comisionesDelMes = Object.values(comisionesPorMecanico).reduce((total, comision) => total + comision, 0)
+    
+    // Calcular gastos totales (taller + salarios + comisiones aprobadas)
+    const totalExpenses = gastosTallerTotal + salariosTotal + comisionesDelMes
 
     // Calcular ganancia neta (mano de obra + markup)
     const totalManoObra = monthWorkOrders.reduce((sum, wo) => sum + (wo.mano_obra || 0), 0)
@@ -774,7 +829,7 @@ export default function ReportsSection() {
       salarios: salariosTotal,
       gastosRepuestos: gastosRepuestosTotal
     }
-  }, [workOrders, gastosTaller, pagosSalarios])
+  }, [workOrders, gastosTaller, pagosSalarios, comisionesPorMecanico])
 
   // Función para obtener trabajos del mes seleccionado
   const getWorkOrdersForSelectedMonth = useCallback((): WorkOrder[] => {
@@ -828,6 +883,13 @@ export default function ReportsSection() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  // Efecto para cargar comisiones cuando cambien los mecánicos o el período
+  useEffect(() => {
+    if (mecanicos.length > 0 && selectedYear && selectedMonth) {
+      cargarComisionesMecanicos()
+    }
+  }, [mecanicos, selectedYear, selectedMonth, cargarComisionesMecanicos])
 
   // Efecto para actualizar meses cuando cambia el año
   useEffect(() => {
@@ -1179,7 +1241,7 @@ export default function ReportsSection() {
                     <TableHead>Mecánico</TableHead>
                     <TableHead>Total Salarial</TableHead>
                     <TableHead>Total Comisiones</TableHead>
-                    <TableHead>Ganancia Base</TableHead>
+                    <TableHead>Ganancias Generadas</TableHead>
                     <TableHead>Margen de Ganancia</TableHead>
                     <TableHead>Acciones</TableHead>
                   </TableRow>
@@ -1825,7 +1887,7 @@ export default function ReportsSection() {
                   </p>
                 </div>
                 <div>
-                  <h3 className="font-medium text-gray-700">Ganancia Base</h3>
+                  <h3 className="font-medium text-gray-700">Ganancia Base|</h3>
                   <p className="text-lg font-semibold text-purple-600">
                     {formatCurrency(calcularGananciaBaseMecanico(selectedMechanic.id))}
                   </p>

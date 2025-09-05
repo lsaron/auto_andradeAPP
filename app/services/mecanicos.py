@@ -314,50 +314,61 @@ class MecanicoService:
 
     def actualizar_comisiones_trabajo(self, trabajo_id: int, mecanicos_ids: List[int]) -> Dict[str, Any]:
         """Actualiza las comisiones de un trabajo basándose en los mecánicos asignados"""
-        # Obtener comisiones existentes para este trabajo
+        print(f"🔍 SERVICIO: Actualizando comisiones para trabajo {trabajo_id}")
+        print(f"🔍 SERVICIO: Mecánicos IDs recibidos: {mecanicos_ids}")
+        
+        # Obtener el trabajo para verificar que existe
+        trabajo = self.db.query(Trabajo).filter(Trabajo.id == trabajo_id).first()
+        if not trabajo:
+            raise ValueError(f"Trabajo {trabajo_id} no encontrado")
+        
+        # Eliminar TODAS las comisiones existentes para este trabajo
         comisiones_existentes = self.db.query(ComisionMecanico).filter(
             ComisionMecanico.id_trabajo == trabajo_id
         ).all()
         
-        # Crear conjunto de IDs de mecánicos existentes
-        mecanicos_existentes = {c.id_mecanico for c in comisiones_existentes}
-        mecanicos_nuevos = set(mecanicos_ids)
+        print(f"🔍 SERVICIO: Eliminando {len(comisiones_existentes)} comisiones existentes")
+        for comision in comisiones_existentes:
+            self.db.delete(comision)
         
-        # Mecánicos a eliminar (ya no están asignados)
-        mecanicos_a_eliminar = mecanicos_existentes - mecanicos_nuevos
+        # Si no hay mecánicos asignados, solo eliminar comisiones existentes
+        if not mecanicos_ids:
+            self.db.commit()
+            return {
+                "message": "Todas las comisiones eliminadas (no hay mecánicos asignados)",
+                "mecanicos_eliminados": len(comisiones_existentes),
+                "mecanicos_agregados": 0
+            }
         
-        # Mecánicos nuevos a agregar
-        mecanicos_a_agregar = mecanicos_nuevos - mecanicos_existentes
+        # Calcular comisión por mecánico (2% de mano_obra dividido entre todos los mecánicos)
+        mano_obra = float(trabajo.mano_obra or 0)
+        comision_por_mecanico = (mano_obra * 0.02) / len(mecanicos_ids)
         
-        # Eliminar comisiones de mecánicos no asignados
-        for mecanico_id in mecanicos_a_eliminar:
-            comision = self.db.query(ComisionMecanico).filter(
-                ComisionMecanico.id_trabajo == trabajo_id,
-                ComisionMecanico.id_mecanico == mecanico_id
-            ).first()
-            if comision:
-                self.db.delete(comision)
+        print(f"🔍 SERVICIO: Mano de obra: {mano_obra}")
+        print(f"🔍 SERVICIO: Comisión por mecánico: {comision_por_mecanico}")
+        print(f"🔍 SERVICIO: Total de mecánicos: {len(mecanicos_ids)}")
         
-        # Agregar comisiones para nuevos mecánicos
-        for mecanico_id in mecanicos_a_agregar:
-            comision = self.calcular_comision_trabajo(trabajo_id, mecanico_id)
+        # Crear nuevas comisiones para todos los mecánicos asignados
+        for mecanico_id in mecanicos_ids:
             nueva_comision = ComisionMecanico(
                 id_trabajo=trabajo_id,
                 id_mecanico=mecanico_id,
-                ganancia_trabajo=comision,
+                ganancia_trabajo=Decimal(str(mano_obra)),  # Ganancia base del trabajo
                 porcentaje_comision=Decimal('2.00'),
-                monto_comision=comision,
+                monto_comision=Decimal(str(comision_por_mecanico)),  # Comisión dividida
                 mes_reporte=datetime.now().strftime("%Y-%m"),
                 estado_comision=EstadoComision.PENDIENTE
             )
             self.db.add(nueva_comision)
+            print(f"🔍 SERVICIO: Comisión creada para mecánico {mecanico_id}: {comision_por_mecanico}")
         
         self.db.commit()
         
         return {
             "message": "Comisiones actualizadas exitosamente",
-            "mecanicos_eliminados": len(mecanicos_a_eliminar),
-            "mecanicos_agregados": len(mecanicos_a_agregar)
+            "mecanicos_eliminados": len(comisiones_existentes),
+            "mecanicos_agregados": len(mecanicos_ids),
+            "comision_por_mecanico": comision_por_mecanico
         }
 
     def obtener_comisiones_mecanico(self, mecanico_id: int, estado: str = None) -> List[Dict[str, Any]]:
@@ -503,10 +514,24 @@ class MecanicoService:
             total_ganancias = Decimal('0.00')
             total_comisiones = Decimal('0.00')
             
-            # Sumar ganancias y comisiones desde las comisiones ya calculadas
+            # Calcular ganancias desde los trabajos reales del mecánico
+            # Usar la tabla comisiones_mecanicos que tiene la relación con trabajos
+            trabajos_mecanico = db.query(Trabajo).join(ComisionMecanico).filter(
+                ComisionMecanico.id_mecanico == mecanico_id
+            ).all()
+            
+            print(f"🔍 DEBUG: Encontrados {len(trabajos_mecanico)} trabajos para mecánico {mecanico_id}")
+            for i, trabajo in enumerate(trabajos_mecanico):
+                print(f"🔍 DEBUG: Trabajo {i+1}: ID={trabajo.id}, mano_obra={trabajo.mano_obra}")
+
+            # Calcular ganancias como suma de mano_obra de los trabajos
+            for trabajo in trabajos_mecanico:
+                total_ganancias += Decimal(str(trabajo.mano_obra or 0))
+            
+            print(f"🔍 DEBUG: Total ganancias calculado: {total_ganancias}")
+
+            # Sumar comisiones desde las comisiones ya calculadas
             for comision in comisiones_mecanico:
-                # Usar los datos ya calculados en la tabla ComisionMecanico
-                total_ganancias += comision.ganancia_trabajo
                 total_comisiones += comision.monto_comision
             
             # Crear objeto con estadísticas calculadas en tiempo real

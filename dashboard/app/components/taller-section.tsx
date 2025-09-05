@@ -629,15 +629,23 @@ export function TallerSection() {
     const categoriaFinal = newGasto.categoria === "otros" ? categoriaPersonalizada : newGasto.categoria
     if (newGasto.categoria === "otros" && !categoriaPersonalizada.trim()) return
 
+    // Debug: Log del estado antes de enviar
+    console.log("🔍 newGasto antes de enviar:", newGasto)
+    console.log("🔍 Estado seleccionado:", newGasto.estado)
+
     try {
+      const datosEnviar = { 
+        ...newGasto, 
+        categoria: categoriaFinal,
+        fecha_gasto: new Date(newGasto.fecha_gasto).toISOString()
+      }
+      
+      console.log("🔍 Datos que se envían al backend:", datosEnviar)
+      
       const response = await fetch(buildApiUrl('/gastos-taller'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          ...newGasto, 
-          categoria: categoriaFinal,
-          fecha_gasto: new Date(newGasto.fecha_gasto).toISOString()
-        })
+        body: JSON.stringify(datosEnviar)
       })
       
       if (!response.ok) {
@@ -646,6 +654,10 @@ export function TallerSection() {
       
       const gastoCreado = await response.json()
       
+      // Debug: Log de la respuesta del backend
+      console.log("🔍 Respuesta del backend:", gastoCreado)
+      console.log("🔍 Estado devuelto por el backend:", gastoCreado.estado)
+      
       // Convertir al formato del frontend
       const gastoFormateado: GastoTaller = {
         id: gastoCreado.id.toString(),
@@ -653,10 +665,13 @@ export function TallerSection() {
         monto: parseFloat(gastoCreado.monto),
         categoria: gastoCreado.categoria,
         fecha_gasto: gastoCreado.fecha_gasto.split('T')[0],
-        estado: gastoCreado.estado || 'PENDIENTE',
+        estado: gastoCreado.estado || newGasto.estado || 'PENDIENTE',
         created_at: gastoCreado.created_at,
         updated_at: gastoCreado.updated_at
       }
+      
+      // Debug: Log del gasto formateado
+      console.log("🔍 Gasto formateado para el frontend:", gastoFormateado)
       
       setGastos(prev => [...prev, gastoFormateado])
       setNewGasto({
@@ -1497,24 +1512,41 @@ export function TallerSection() {
           </CardTitle>
           <div className="flex items-center gap-2">
             {/* Botón para alternar entre gastos y pagos */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setMostrarGastos(!mostrarGastos)}
-              className="text-xs"
-            >
-              {mostrarGastos ? (
-                <>
-                  <Users className="h-3 w-3 mr-1" />
-                  Ver Salarios
-                </>
-              ) : (
-                <>
-                  <Wrench className="h-3 w-3 mr-1" />
-                  Ver Gastos
-                </>
-              )}
-            </Button>
+            {/* Botón Toggle Moderno Simple */}
+            <div className="relative">
+              <button
+                onClick={() => setMostrarGastos(!mostrarGastos)}
+                className={`
+                  relative flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
+                  transition-all duration-200 ease-in-out transform hover:scale-105
+                  ${mostrarGastos 
+                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md hover:shadow-lg' 
+                    : 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-md hover:shadow-lg'
+                  }
+                  active:scale-95
+                `}
+              >
+                {/* Icono */}
+                <div className="flex items-center">
+                  {mostrarGastos ? (
+                    <Users className="h-4 w-4" />
+                  ) : (
+                    <Wrench className="h-4 w-4" />
+                  )}
+                </div>
+                
+                {/* Texto */}
+                <span>
+                  {mostrarGastos ? 'Ver Salarios' : 'Ver Gastos'}
+                </span>
+                
+                {/* Indicador de estado */}
+                <div className={`
+                  w-2 h-2 rounded-full
+                  ${mostrarGastos ? 'bg-blue-200' : 'bg-emerald-200'}
+                `} />
+              </button>
+            </div>
             
             <Button
               variant="outline"
@@ -1548,8 +1580,10 @@ export function TallerSection() {
           </div>
         </CardHeader>
         <CardContent>
-          {/* CONTENIDO DE GASTOS */}
-          {mostrarGastos && (
+          {/* CONTENIDO CON TRANSICIÓN SIMPLE */}
+          <div className="transition-opacity duration-300 ease-in-out">
+            {/* CONTENIDO DE GASTOS */}
+            {mostrarGastos && (
             <>
               <div className="flex items-center gap-4 py-4">
                 <div className="flex items-center">
@@ -1740,6 +1774,7 @@ export function TallerSection() {
               )}
             </>
           )}
+          </div>
         </CardContent>
       </Card>
 

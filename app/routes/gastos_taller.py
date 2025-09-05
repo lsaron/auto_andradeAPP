@@ -17,7 +17,8 @@ def crear_gasto_taller(gasto: GastoTallerCreate, db: Session = Depends(get_db)):
             descripcion=gasto.descripcion,
             monto=gasto.monto,
             categoria=gasto.categoria,
-            fecha_gasto=gasto.fecha_gasto
+            fecha_gasto=gasto.fecha_gasto,
+            estado=gasto.estado
         )
         db.add(db_gasto)
         db.commit()

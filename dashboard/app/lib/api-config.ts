@@ -26,6 +26,9 @@ export const API_CONFIG = {
     // Detalles de gastos
     DETALLES_GASTOS: '/detalles-gastos',
     
+    // Comisiones de mecánicos
+    COMISIONES_MECANICOS: '/mecanicos/todas-comisiones',
+    
     // Reportes
     REPORTES: '/reportes',
     

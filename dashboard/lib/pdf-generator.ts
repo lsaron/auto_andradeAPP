@@ -275,14 +275,13 @@ export const generateInvoicePDF = async (selectedOrderForPrint: any, download: b
            <div class="header-info">
              <div class="company-name">AUTO ANDRADE</div>
              <div class="company-experience">Más de 20 años de experiencia en el sector automotriz</div>
-             <div class="invoice-title">Factura</div>
            </div>
          </div>
         
         <!-- INFORMACIÓN DE LA FACTURA Y CLIENTE -->
         <div class="info-section">
                      <div class="info-column">
-             <div class="section-title">Información de la Factura</div>
+             <div class="section-title">Información de la Orden</div>
              <div class="info-row"><strong>Número de Orden:</strong> ${selectedOrderForPrint.id}</div>
              <div class="info-row"><strong>Fecha de Emisión:</strong> ${new Date().toLocaleDateString('es-CR', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
              <div class="info-row"><strong>Fecha de Servicio:</strong> ${formatDate(selectedOrderForPrint.date)}</div>

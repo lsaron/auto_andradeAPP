@@ -82,6 +82,7 @@ export function MechanicsSection() {
     porcentaje_comision?: number
     total_mecanicos_trabajo?: number
     comision_total_trabajo?: number
+    estado_comision?: string
     gastos_detallados?: any[]
   }
   
@@ -1084,15 +1085,9 @@ export function MechanicsSection() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-blue-900">Total Gastos Reales</p>
+                    <p className="text-sm font-medium text-blue-900">Costos Repuestos/Materiales</p>
                     <p className="text-lg font-semibold text-red-600">
                       ₡{filteredJobs.reduce((total, job) => total + (Number(job.total_gastos) || 0), 0).toLocaleString('es-CR')}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-blue-900">Total Ganancia Base</p>
-                    <p className="text-lg font-semibold text-blue-600">
-                      ₡{filteredJobs.reduce((total, job) => total + (Number(job.ganancia_base) || 0), 0).toLocaleString('es-CR')}
                     </p>
                   </div>
                                      <div>
@@ -1210,10 +1205,10 @@ export function MechanicsSection() {
                           <TableHead>Matrícula</TableHead>
                           <TableHead>Descripción</TableHead>
                           <TableHead className="text-right">Mano de Obra</TableHead>
-                          <TableHead className="text-right">Gastos Reales</TableHead>
-                          <TableHead className="text-right">Ganancia Base</TableHead>
+                          <TableHead className="text-right">Costos</TableHead>
                                                      <TableHead className="text-right">Comisión Total</TableHead>
                            <TableHead className="text-right">Comisión Individual</TableHead>
+                           <TableHead className="text-center">Estado Comisión</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1250,14 +1245,29 @@ export function MechanicsSection() {
                               <TableCell className="text-right font-medium text-red-600">
                                 ₡{Number(job.total_gastos || 0).toLocaleString('es-CR')}
                               </TableCell>
-                                                             <TableCell className="text-right font-medium text-blue-600">
-                                 ₡{Number(job.ganancia_base || 0).toLocaleString('es-CR')}
-                               </TableCell>
                                <TableCell className="text-right font-medium text-blue-600">
                                  ₡{Number(job.comision_total_trabajo || 0).toLocaleString('es-CR')}
                                </TableCell>
                               <TableCell className="text-right font-medium text-purple-600">
                                 ₡{Number(job.comision || 0).toLocaleString('es-CR')}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge 
+                                  variant={
+                                    job.estado_comision === 'APROBADA' ? 'default' :
+                                    job.estado_comision === 'DENEGADA' ? 'destructive' :
+                                    job.estado_comision === 'PENALIZADA' ? 'secondary' :
+                                    'outline'
+                                  }
+                                  className={
+                                    job.estado_comision === 'APROBADA' ? 'bg-green-100 text-green-800 border-green-200' :
+                                    job.estado_comision === 'DENEGADA' ? 'bg-red-100 text-red-800 border-red-200' :
+                                    job.estado_comision === 'PENALIZADA' ? 'bg-orange-100 text-orange-800 border-orange-200' :
+                                    'bg-gray-100 text-gray-800 border-gray-200'
+                                  }
+                                >
+                                  {job.estado_comision || 'PENDIENTE'}
+                                </Badge>
                               </TableCell>
                             </TableRow>
                           )

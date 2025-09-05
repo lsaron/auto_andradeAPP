@@ -955,24 +955,44 @@ export function WorkOrdersSection() {
           expenseDetails: [], // Inicialmente vacío, se cargará después
         }))
 
+        // Ordenar por ID descendente (última orden primero)
+        const sortedOrders = transformedOrders.sort((a, b) => {
+          const aId = parseInt(a.id.replace('WO-', ''))
+          const bId = parseInt(b.id.replace('WO-', ''))
+          return bId - aId
+        })
+
         if (reset) {
-          setWorkOrders(transformedOrders)
-          setFilteredWorkOrders(transformedOrders)
+          // Mostrar solo los primeros 20 trabajos
+          const limitedOrders = sortedOrders.slice(0, 20)
+          setWorkOrders(limitedOrders)
+          setFilteredWorkOrders(limitedOrders)
+          
+          // Verificar si hay más trabajos
+          setHasMore(sortedOrders.length > 20)
+          setTotalWorkOrders(sortedOrders.length)
           
           // Generar opciones de años basándose en los datos reales
-          const dynamicYearOptions = generateYearOptions(transformedOrders)
+          const dynamicYearOptions = generateYearOptions(sortedOrders)
           setYearOptions(dynamicYearOptions)
         } else {
-          setWorkOrders((prev) => [...prev, ...transformedOrders])
-          setFilteredWorkOrders((prev) => [...prev, ...transformedOrders])
+          // Cargar más trabajos (siguientes 20)
+          const startIndex = workOrders.length
+          const endIndex = startIndex + 20
+          const moreOrders = sortedOrders.slice(startIndex, endIndex)
+          
+          setWorkOrders((prev) => [...prev, ...moreOrders])
+          setFilteredWorkOrders((prev) => [...prev, ...moreOrders])
+          
+          // Verificar si hay más trabajos por cargar
+          setHasMore(endIndex < sortedOrders.length)
         }
 
-        setTotalWorkOrders(transformedOrders.length)
-        setHasMore(false) // No pagination for now
         setPage(pageNum)
 
         // Cargar gastos detallados para cada trabajo después de cargar la lista principal
-        await loadExpenseDetails(transformedOrders)
+        const ordersToProcess = reset ? sortedOrders.slice(0, 20) : sortedOrders.slice(workOrders.length, workOrders.length + 20)
+        await loadExpenseDetails(ordersToProcess)
       } catch (err) {
         setError(err instanceof Error ? err : new Error("Error loading work orders"))
         if (reset) {
@@ -986,7 +1006,7 @@ export function WorkOrdersSection() {
         }
       }
     },
-    [loading, selectedYear, selectedMonth, loadExpenseDetails],
+    [loading, selectedYear, selectedMonth, loadExpenseDetails, workOrders.length],
   )
 
   // Función para verificar período actual (simplificada)
@@ -1378,11 +1398,14 @@ export function WorkOrdersSection() {
       printContent.style.fontSize = '12px'
       printContent.style.lineHeight = '1.4'
 
-      // Generar el contenido HTML de la factura profesional
+      // Generar el contenido HTML de la factura optimizado
       const invoiceHTML = `
         <!-- ENCABEZADO DE LA EMPRESA -->
         <div style="text-align: center; border-bottom: 3px solid #1e40af; padding-bottom: 20px; margin-bottom: 30px;">
-          <h1 style="font-size: 32px; font-weight: bold; color: #1e40af; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 2px;">AUTO ANDRADE</h1>
+          <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 15px;">
+            <img src="/auto-andrade.png" alt="Auto Andrade Logo" style="width: 80px; height: 80px; margin-right: 15px; object-fit: contain;" onerror="this.style.display='none'">
+            <h1 style="font-size: 32px; font-weight: bold; color: #1e40af; margin: 0; text-transform: uppercase; letter-spacing: 2px;">AUTO ANDRADE</h1>
+          </div>
           <h2 style="font-size: 16px; color: #666; margin-bottom: 12px; font-style: italic;">Servicios Automotrices Profesionales</h2>
           <div style="font-size: 12px; color: #555; line-height: 1.4;">
             <p style="margin: 4px 0;"><strong>Teléfono:</strong> 8746-7602</p>
@@ -1391,19 +1414,14 @@ export function WorkOrdersSection() {
           </div>
         </div>
         
-        <!-- TÍTULO DE LA FACTURA -->
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h2 style="font-size: 26px; font-weight: bold; color: #1e40af; text-transform: uppercase; letter-spacing: 1px;">ORDEN DE TRABAJO</h2>
-        </div>
         
-        <!-- INFORMACIÓN DE LA FACTURA Y CLIENTE -->
+        <!-- INFORMACIÓN DE LA ORDEN Y CLIENTE -->
         <div style="display: flex; justify-content: space-between; margin-bottom: 30px; background: #f8fafc; padding: 20px; border-radius: 8px; border-left: 4px solid #1e40af;">
           <div style="flex: 1; margin-right: 20px;">
-            <h3 style="font-size: 14px; font-weight: bold; color: #1e40af; margin-bottom: 12px; text-transform: uppercase; border-bottom: 1px solid #1e40af; padding-bottom: 4px;">Información de la Factura</h3>
+            <h3 style="font-size: 14px; font-weight: bold; color: #1e40af; margin-bottom: 12px; text-transform: uppercase; border-bottom: 1px solid #1e40af; padding-bottom: 4px;">Información de la Orden</h3>
             <p style="font-size: 12px; margin: 6px 0;"><strong>Número de Orden:</strong> ${selectedOrderForPrint.id}</p>
             <p style="font-size: 12px; margin: 6px 0;"><strong>Fecha de Emisión:</strong> ${new Date().toLocaleDateString('es-CR', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
             <p style="font-size: 12px; margin: 6px 0;"><strong>Fecha de Servicio:</strong> ${formatDate(selectedOrderForPrint.date)}</p>
-            <p style="font-size: 12px; margin: 6px 0;"><strong>Estado:</strong> <span style="color: #10b981; font-weight: bold;">COMPLETADO</span></p>
           </div>
           <div style="flex: 1;">
             <h3 style="font-size: 14px; font-weight: bold; color: #1e40af; margin-bottom: 12px; text-transform: uppercase; border-bottom: 1px solid #1e40af; padding-bottom: 4px;">Datos del Cliente</h3>
@@ -1425,8 +1443,6 @@ export function WorkOrdersSection() {
             </div>
             <div>
               <p style="font-size: 12px; margin: 8px 0;"><strong>Año:</strong> ${vehicleInfo?.anio || 'No especificado'}</p>
-              <p style="font-size: 12px; margin: 8px 0;"><strong>Color:</strong> No especificado</p>
-              <p style="font-size: 12px; margin: 8px 0;"><strong>VIN/Chasis:</strong> No especificado</p>
             </div>
           </div>
         </div>
@@ -1441,10 +1457,8 @@ export function WorkOrdersSection() {
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;">
           <thead>
             <tr style="background: #1e40af; color: white;">
-              <th style="padding: 15px 12px; text-align: left; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; width: 45%;">Descripción del Servicio/Repuesto</th>
-              <th style="padding: 15px 12px; text-align: center; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; width: 15%;">Cantidad</th>
-              <th style="padding: 15px 12px; text-align: right; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; width: 20%;">Precio Unitario</th>
-              <th style="padding: 15px 12px; text-align: right; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; width: 20%;">Total</th>
+              <th style="padding: 15px 12px; text-align: left; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; width: 60%;">Descripción del Repuesto/Material</th>
+              <th style="padding: 15px 12px; text-align: right; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; width: 40%;">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -1452,17 +1466,13 @@ export function WorkOrdersSection() {
               selectedOrderForPrint.expenseDetails.map((expense: any) => `
                 <tr style="border-bottom: 1px solid #e5e7eb; background: #f9fafb;">
                   <td style="padding: 12px; font-size: 12px; color: #374151;">${expense.item || 'Repuesto/Material'}</td>
-                  <td style="padding: 12px; font-size: 12px; text-align: center; color: #374151;">1</td>
-                  <td style="padding: 12px; font-size: 12px; text-align: right; color: #374151;">${formatCurrency(parseFloat(expense.amount) || 0)}</td>
                   <td style="padding: 12px; font-size: 12px; text-align: right; color: #374151; font-weight: 500;">${formatCurrency(parseFloat(expense.amount) || 0)}</td>
                 </tr>
               `).join('') : 
-              '<tr style="border-bottom: 1px solid #e5e7eb;"><td colspan="4" style="padding: 15px; text-align: center; color: #6b7280; font-style: italic; background: #f9fafb;">No se registraron repuestos o materiales específicos</td></tr>'
+              '<tr style="border-bottom: 1px solid #e5e7eb;"><td colspan="2" style="padding: 15px; text-align: center; color: #6b7280; font-style: italic; background: #f9fafb;">No se registraron repuestos o materiales específicos</td></tr>'
             }
             <tr style="background: #dbeafe; font-weight: bold; border-bottom: 2px solid #1e40af;">
               <td style="padding: 12px; font-size: 12px; color: #1e40af;">MANO DE OBRA</td>
-              <td style="padding: 12px; font-size: 12px; text-align: center; color: #1e40af;">1</td>
-              <td style="padding: 12px; font-size: 12px; text-align: right; color: #1e40af;">${formatCurrency(selectedOrderForPrint.manoObra || 0)}</td>
               <td style="padding: 12px; font-size: 12px; text-align: right; color: #1e40af;">${formatCurrency(selectedOrderForPrint.manoObra || 0)}</td>
             </tr>
           </tbody>
@@ -1470,7 +1480,6 @@ export function WorkOrdersSection() {
         
         <!-- RESUMEN DE COSTOS -->
         <div style="background: #f8fafc; padding: 25px; border-radius: 8px; border: 2px solid #e5e7eb; margin-bottom: 25px;">
-          <h3 style="font-size: 16px; font-weight: bold; color: #1e40af; margin-bottom: 15px; text-transform: uppercase; border-bottom: 1px solid #1e40af; padding-bottom: 6px;">Resumen de Costos</h3>
           <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 13px; padding: 8px 0;">
             <span style="font-weight: 500; color: #555;">Subtotal (Repuestos/Materiales):</span>
             <span style="font-weight: bold; color: #333;">${formatCurrency((selectedOrderForPrint.expenseDetails || []).reduce((sum: number, expense: any) => sum + (parseFloat(expense.amount) || 0), 0))}</span>
@@ -1485,17 +1494,6 @@ export function WorkOrdersSection() {
           </div>
         </div>
         
-        <!-- GARANTÍAS Y CONDICIONES -->
-        <div style="background: #ecfdf5; padding: 20px; border-radius: 8px; border-left: 4px solid #10b981; margin-bottom: 25px;">
-          <h3 style="font-size: 14px; font-weight: bold; color: #065f46; margin-bottom: 12px; text-transform: uppercase; border-bottom: 1px solid #10b981; padding-bottom: 6px;">Garantías y Condiciones</h3>
-          <div style="font-size: 11px; color: #047857; line-height: 1.5;">
-            <p style="margin: 6px 0;"><strong>• Garantía de Mano de Obra:</strong> 90 días para trabajos realizados</p>
-            <p style="margin: 6px 0;"><strong>• Garantía de Repuestos:</strong> 30 días en repuestos nuevos (según política del proveedor)</p>
-            <p style="margin: 6px 0;"><strong>• Excepciones:</strong> La garantía no cubre daños por mal uso, accidentes o desgaste normal</p>
-            <p style="margin: 6px 0;"><strong>• Válidez:</strong> Para hacer válida la garantía, presente esta factura al momento de la reclamación</p>
-          </div>
-        </div>
-        
         <!-- AGRADECIMIENTO -->
         <div style="text-align: center; font-size: 16px; color: #1e40af; font-weight: bold; margin: 25px 0; font-style: italic; background: #f0f9ff; padding: 20px; border-radius: 8px;">
           ¡Gracias por confiar en Auto Andrade!<br>
@@ -1506,7 +1504,7 @@ export function WorkOrdersSection() {
         <div style="margin-top: 40px; padding-top: 20px; border-top: 2px solid #e5e7eb; text-align: center; font-size: 11px; color: #666; line-height: 1.4;">
           <div style="font-weight: bold; margin-bottom: 8px;"><strong>© 2025</strong> - AUTO ANDRADE</div>
           <div>Teléfono: 8746-7602 | Más de 20 años de experiencia en el sector automotriz</div>
-          <div style="margin-top: 8px; font-style: italic;">Esta factura es válida como comprobante de pago y garantía</div>
+          <div style="margin-top: 8px; font-style: italic;">Esta orden es válida como comprobante de pago y garantía</div>
           <div style="margin-top: 15px; font-size: 9px; color: #999; border-top: 1px solid #e5e7eb; padding-top: 10px;">
             Impreso el ${new Date().toLocaleString('es-CR')} | Sistema de Gestión Auto Andrade
           </div>
@@ -1731,7 +1729,7 @@ export function WorkOrdersSection() {
               {/* Expenses Section */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Gastos y Materiales (Costo Real / Precio Cliente)</Label>
+                  <Label className="text-sm font-medium"> Costos (Repuestos/Materiales)</Label>
                   <Button
                     type="button"
                     onClick={addExpense}
@@ -1749,7 +1747,7 @@ export function WorkOrdersSection() {
                     {/* Header de columnas */}
                     <div className="flex gap-2 items-center text-xs font-medium text-gray-600 pb-2 border-b">
                       <div className="flex-1">Descripción</div>
-                      <div className="w-32 text-center">Costo Real</div>
+                      <div className="w-32 text-center">Costo</div>
                       <div className="w-32 text-center">Precio Cliente</div>
                       <div className="w-24 text-center">Ganancia</div>
                       <div className="w-10"></div>
@@ -2967,7 +2965,7 @@ export function WorkOrdersSection() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
                     <Coins className="h-4 w-4" />
-                    Detalle de Gastos
+                    Detalle de Costos
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -2984,7 +2982,7 @@ export function WorkOrdersSection() {
                       {/* Header de columnas */}
                       <div className="grid grid-cols-4 gap-2 text-xs font-medium text-gray-600 pb-2 border-b">
                         <div>Descripción</div>
-                        <div className="text-center">Costo Real</div>
+                        <div className="text-center">Costo</div>
                         <div className="text-center">Precio Cliente</div>
                         <div className="text-center">Ganancia</div>
                       </div>
@@ -3014,7 +3012,7 @@ export function WorkOrdersSection() {
                       <div className="space-y-2 pt-3 border-t">
                         {/* Total Gastos (Costo Real) */}
                         <div className="flex justify-between items-center py-1">
-                          <span className="text-sm font-medium">Total Gastos (Respuestos/Materiales):</span>
+                          <span className="text-sm font-medium">Total Costos (Repuestos/Materiales):</span>
                           <span className="font-semibold text-red-600">
                             {formatCurrency(selectedWorkOrder.expenses)}
                           </span>
@@ -3067,7 +3065,7 @@ export function WorkOrdersSection() {
 
                         {/* Ganancia Neta (Ganancia Base + Markup de Repuestos) */}
                         <div className="flex justify-between py-1">
-                          <span className="text-sm font-medium">Ganancia Neta:</span>
+                          <span className="text-sm font-medium">Ganancia:</span>
                           <span className="font-semibold text-lg text-green-600">
                             {(() => {
                               // ✅ NUEVA LÓGICA: Ganancia Base = Mano de Obra (sin restar gastos de repuestos)

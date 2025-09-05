@@ -481,6 +481,12 @@ def obtener_trabajos_mecanico(
         for comision in comisiones:
             trabajo = db.query(Trabajo).filter(Trabajo.id == comision["id_trabajo"]).first()
             if trabajo:
+                # Obtener la comisión específica del mecánico para este trabajo
+                comision_mecanico = db.query(ComisionMecanico).filter(
+                    ComisionMecanico.id_trabajo == trabajo.id,
+                    ComisionMecanico.id_mecanico == mecanico_id
+                ).first()
+                
                 # Calcular gastos reales del trabajo
                 gastos_reales = db.query(DetalleGasto).filter(
                     DetalleGasto.id_trabajo == trabajo.id
@@ -512,7 +518,8 @@ def obtener_trabajos_mecanico(
                     "comision": comision_por_mecanico,
                     "porcentaje_comision": 2.0,  # 2% fijo
                     "total_mecanicos_trabajo": total_mecanicos_trabajo,  # Número de mecánicos en este trabajo
-                    "comision_total_trabajo": comision_total  # Comisión total del trabajo (antes de dividir)
+                    "comision_total_trabajo": comision_total,  # Comisión total del trabajo (antes de dividir)
+                    "estado_comision": comision_mecanico.estado_comision.value if comision_mecanico else "PENDIENTE"  # Estado de la comisión
                 }
                 trabajos_detallados.append(trabajo_info)
         
@@ -540,6 +547,52 @@ def cambiar_estado_comision_mecanico(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/todas-comisiones/")
+def obtener_todas_comisiones(db: Session = Depends(get_db)):
+    """
+    Obtener todas las comisiones de todos los mecánicos
+    """
+    try:
+        # Primero probar si la tabla existe y tiene datos
+        comisiones = db.query(ComisionMecanico).all()
+        
+        # Si no hay comisiones, devolver lista vacía
+        if not comisiones:
+            return []
+        
+        resultado = []
+        for comision in comisiones:
+            resultado.append({
+                "id": comision.id,
+                "id_trabajo": comision.id_trabajo,
+                "id_mecanico": comision.id_mecanico,
+                "ganancia_trabajo": float(comision.ganancia_trabajo),
+                "porcentaje_comisi": float(comision.porcentaje_comisi),
+                "monto_comision": float(comision.monto_comision),
+                "fecha_calculo": comision.fecha_calculo.isoformat(),
+                "mes_reporte": comision.mes_reporte,
+                "estado_comision": comision.estado_comision,
+                "quincena": comision.quincena
+            })
+        
+        return resultado
+        
+    except Exception as e:
+        print(f"Error en obtener_todas_comisiones: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/test-comisiones/")
+def test_comisiones(db: Session = Depends(get_db)):
+    """
+    Endpoint de prueba para verificar si la tabla comisiones existe
+    """
+    try:
+        # Probar si la tabla existe
+        count = db.query(ComisionMecanico).count()
+        return {"message": "Tabla comisiones_mecanicos existe", "count": count}
+    except Exception as e:
+        return {"error": str(e), "message": "Error al acceder a la tabla comisiones_mecanicos"}
 
 @router.get("/{mecanico_id}/comisiones/debug")
 def verificar_comisiones_mecanico_debug(mecanico_id: int, db: Session = Depends(get_db)):
@@ -607,6 +660,34 @@ def aprobar_denegar_comisiones_quincena(
         
         if "error" in resultado:
             raise HTTPException(status_code=400, detail=resultado["error"])
+        
+        return resultado
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/todas-comisiones/", response_model=List[dict])
+def obtener_todas_comisiones(db: Session = Depends(get_db)):
+    """
+    Obtener todas las comisiones de todos los mecánicos
+    """
+    try:
+        comisiones = db.query(ComisionMecanico).all()
+        
+        resultado = []
+        for comision in comisiones:
+            resultado.append({
+                "id": comision.id,
+                "id_trabajo": comision.id_trabajo,
+                "id_mecanico": comision.id_mecanico,
+                "ganancia_trabajo": float(comision.ganancia_trabajo),
+                "porcentaje_comisi": float(comision.porcentaje_comisi),
+                "monto_comision": float(comision.monto_comision),
+                "fecha_calculo": comision.fecha_calculo.isoformat(),
+                "mes_reporte": comision.mes_reporte,
+                "estado_comision": comision.estado_comision,
+                "quincena": comision.quincena
+            })
         
         return resultado
         
