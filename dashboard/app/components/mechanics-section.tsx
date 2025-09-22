@@ -1202,7 +1202,7 @@ export function MechanicsSection() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Fecha</TableHead>
-                          <TableHead>Matrícula</TableHead>
+                          <TableHead>Vehículo / Orden</TableHead>
                           <TableHead>Descripción</TableHead>
                           <TableHead className="text-right">Mano de Obra</TableHead>
                           <TableHead className="text-right">Costos</TableHead>
@@ -1234,7 +1234,12 @@ export function MechanicsSection() {
                                 {new Date(job.fecha).toLocaleDateString('es-CR')}
                               </TableCell>
                               <TableCell>
-                                <Badge variant="outline">{job.matricula_carro}</Badge>
+                                <div className="flex flex-col gap-1">
+                                  <Badge variant="outline">{job.matricula_carro}</Badge>
+                                  <Badge variant="secondary" className="text-xs">
+                                    WO-{job.id.toString().padStart(3, '0')}
+                                  </Badge>
+                                </div>
                               </TableCell>
                               <TableCell className="max-w-xs truncate">
                                 {job.descripcion}

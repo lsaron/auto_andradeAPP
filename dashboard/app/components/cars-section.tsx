@@ -862,7 +862,7 @@ export function CarsSection() {
                 <Input
                   id="brand"
                   value={newCar.brand}
-                  onChange={(e) => setNewCar({ ...newCar, brand: e.target.value })}
+                  onChange={(e) => setNewCar({ ...newCar, brand: e.target.value.toUpperCase() })}
                   className="sm:col-span-3"
                 />
               </div>
@@ -873,7 +873,7 @@ export function CarsSection() {
                 <Input
                   id="model"
                   value={newCar.model}
-                  onChange={(e) => setNewCar({ ...newCar, model: e.target.value })}
+                  onChange={(e) => setNewCar({ ...newCar, model: e.target.value.toUpperCase() })}
                   className="sm:col-span-3"
                 />
               </div>
@@ -945,7 +945,7 @@ export function CarsSection() {
                       <Input
                         id="edit-licensePlate"
                         value={editingCar.licensePlate}
-                        onChange={(e) => setEditingCar({ ...editingCar, licensePlate: e.target.value })}
+                        onChange={(e) => setEditingCar({ ...editingCar, licensePlate: e.target.value.toUpperCase() })}
                         className="sm:col-span-3"
                       />
                     </div>
@@ -957,7 +957,7 @@ export function CarsSection() {
                       <Input
                         id="edit-brand"
                         value={editingCar.brand}
-                        onChange={(e) => setEditingCar({ ...editingCar, brand: e.target.value })}
+                        onChange={(e) => setEditingCar({ ...editingCar, brand: e.target.value.toUpperCase() })}
                         className="sm:col-span-3"
                       />
                     </div>
@@ -969,7 +969,7 @@ export function CarsSection() {
                       <Input
                         id="edit-model"
                         value={editingCar.model}
-                        onChange={(e) => setEditingCar({ ...editingCar, model: e.target.value })}
+                        onChange={(e) => setEditingCar({ ...editingCar, model: e.target.value.toUpperCase() })}
                         className="sm:col-span-3"
                       />
                     </div>
