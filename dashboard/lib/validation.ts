@@ -3,6 +3,7 @@ import { z } from "zod"
 
 export const clientCreateSchema = z.object({
   name: z.string().min(1, "El nombre es requerido").max(100, "El nombre es muy largo"),
+  lastname: z.string().max(100, "El apellido es muy largo").optional(),
   email: z.string().email("Email inválido").max(100, "El email es muy largo"),
   phone: z.string().min(1, "El teléfono es requerido").max(20, "El teléfono es muy largo"),
   address: z.string().max(200, "La dirección es muy larga").optional(),

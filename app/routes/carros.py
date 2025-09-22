@@ -25,7 +25,7 @@ def obtener_todos_los_carros(db: Session = Depends(get_db)):
             "modelo": carro.modelo,
             "anio": carro.anio,
             "id_cliente_actual": carro.id_cliente_actual,
-            "nombre_cliente": cliente.nombre if cliente else "Sin propietario"
+            "nombre_cliente": f"{cliente.nombre} {cliente.apellido}".strip() if cliente else "Sin propietario"
         })
 
     return resultado
@@ -40,7 +40,7 @@ def obtener_historial_carro(matricula: str, db: Session = Depends(get_db)):
     cliente_actual = db.query(Cliente).filter(Cliente.id_nacional == carro.id_cliente_actual).first()
     dueno_actual = {
         "id_cliente": cliente_actual.id_nacional if cliente_actual else None,
-        "nombre": cliente_actual.nombre if cliente_actual else "Sin dueño"
+        "nombre": f"{cliente_actual.nombre} {cliente_actual.apellido}".strip() if cliente_actual else "Sin dueño"
     }
 
     historial_duenos = (

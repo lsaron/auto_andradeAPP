@@ -235,7 +235,7 @@ export function CarsSection() {
 // call it with the plate when opening modals
 
 
-  const [owners, setOwners] = useState<{ id: string; name: string }[]>([])
+  const [owners, setOwners] = useState<{ id: string; name: string; lastname: string; cedula: string }[]>([])
 
   const [isNewCarModalOpen, setIsNewCarModalOpen] = useState(false)
   const [selectedCar, setSelectedCar] = useState<Car | null>(null)
@@ -360,6 +360,8 @@ export function CarsSection() {
     const transformed = data.map((cliente: any) => ({
       id: cliente.id_nacional,
       name: cliente.nombre,
+      lastname: cliente.apellido || "",
+      cedula: cliente.id_nacional,
     }))
 
     setOwners(transformed)
@@ -816,9 +818,10 @@ export function CarsSection() {
   useEffect(() => {
   console.log("🧠 Clientes cargados en owners:", owners)}, [owners])
   const ownerOptions: OwnerOption[] = owners.map((owner) => {
+    const fullName = owner.lastname ? `${owner.name} ${owner.lastname}` : owner.name
     return {
       value: owner.id,
-      label: owner.name,
+      label: `${fullName} - ${owner.cedula}`,
     }
   })
   return (

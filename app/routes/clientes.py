@@ -41,6 +41,7 @@ def obtener_clientes(db: Session = Depends(get_db)):
         resultado.append({
             "id_nacional": cliente.id_nacional,
             "nombre": cliente.nombre,
+            "apellido": cliente.apellido,
             "correo": cliente.correo,
             "telefono": cliente.telefono,
             "total_gastado": total_gastado,
@@ -73,6 +74,7 @@ def obtener_cliente_con_carros(id_nacional: str, db: Session = Depends(get_db)):
     return {
         "id_nacional": cliente.id_nacional,
         "nombre": cliente.nombre,
+        "apellido": cliente.apellido,
         "correo": cliente.correo,
         "telefono": cliente.telefono,
         "carros": lista_carros
@@ -85,6 +87,7 @@ def crear_cliente(cliente: ClienteSchema, db: Session = Depends(get_db)):
     nuevo_cliente = Cliente(
         id_nacional=cliente.id_nacional,  # 👈 Aseguramos que se envíe el ID Nacional
         nombre=cliente.nombre,
+        apellido=cliente.apellido,
         correo=cliente.correo,
         telefono=cliente.telefono
     )
@@ -101,6 +104,7 @@ def actualizar_cliente(id_nacional: str, cliente: ClienteSchema, db: Session = D
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
     cliente_db.nombre = cliente.nombre
+    cliente_db.apellido = cliente.apellido
     cliente_db.correo = cliente.correo
     cliente_db.telefono = cliente.telefono
 

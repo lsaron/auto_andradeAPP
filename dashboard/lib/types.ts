@@ -2,6 +2,7 @@
 export interface Client {
   id: string
   name: string
+  lastname?: string
   email: string
   phone: string
   address: string
@@ -14,6 +15,7 @@ export interface Client {
 
 export interface ClientCreate {
   name: string
+  lastname?: string
   email: string
   phone: string
   address: string
@@ -21,6 +23,7 @@ export interface ClientCreate {
 
 export interface ClientUpdate {
   name?: string
+  lastname?: string
   email?: string
   phone?: string
   address?: string

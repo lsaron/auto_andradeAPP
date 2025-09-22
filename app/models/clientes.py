@@ -7,6 +7,7 @@ class Cliente(Base):
 
     id_nacional = Column(String(20), primary_key=True, unique=True, index=True)
     nombre = Column(String(100))
+    apellido = Column(String(100), nullable=True)
     correo = Column(String(100), nullable=True)
     telefono = Column(String(20))
 

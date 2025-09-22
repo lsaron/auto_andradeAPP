@@ -98,16 +98,13 @@ def obtener_estadisticas_mecanico(
 ):
     """Obtener estadísticas de un mecánico (trabajos, ganancias, comisiones)"""
     try:
-        print(f"🔍 DEBUG: Obteniendo estadísticas para mecánico {mecanico_id}, mes: {mes}")
         # ✅ USAR LA FUNCIÓN CORRECTA QUE CALCULA GANANCIA BASE Y COMISIONES
         result = MecanicoService.obtener_estadisticas_mecanico(db, mecanico_id, mes)
-        print(f"🔍 DEBUG: Resultado obtenido: {result}")
         return result
         
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        print(f"❌ ERROR en endpoint estadísticas: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{mecanico_id}", response_model=MecanicoSchema)
@@ -180,74 +177,7 @@ def test_debug(db: Session = Depends(get_db)):
     except Exception as e:
         return {"error": str(e)}
 
-@router.get("/{mecanico_id}/estadisticas-simple", response_model=MecanicoConEstadisticas)
-def obtener_estadisticas_simple(mecanico_id: int, db: Session = Depends(get_db)):
-    """Endpoint simple para probar estadísticas"""
-    try:
-        print(f"🔍 DEBUG SIMPLE: Buscando mecánico {mecanico_id}")
-        mecanico = db.query(MecanicoModel).filter(MecanicoModel.id == mecanico_id).first()
-        if not mecanico:
-            print(f"❌ DEBUG SIMPLE: Mecánico {mecanico_id} no encontrado")
-            raise HTTPException(status_code=404, detail="Mecánico no encontrado")
-        
-        print(f"✅ DEBUG SIMPLE: Mecánico encontrado: {mecanico.nombre}")
-        print(f"🔍 DEBUG SIMPLE: Campos del mecánico - id:{mecanico.id}, nombre:{mecanico.nombre}, activo:{mecanico.activo}")
-        
-        # Devolver datos hardcodeados para probar
-        result = MecanicoConEstadisticas(
-            id=mecanico.id,
-            nombre=mecanico.nombre,
-            telefono=mecanico.telefono,
-            porcentaje_comision=mecanico.porcentaje_comision,
-            fecha_contratacion=mecanico.fecha_contratacion,
-            activo=mecanico.activo,
-            total_trabajos=1,
-            total_ganancias=100000.0,
-            comisiones_mes=2000.0
-        )
-        
-        print(f"✅ DEBUG SIMPLE: Resultado creado exitosamente")
-        return result
-    except Exception as e:
-        print(f"❌ ERROR en estadísticas simple: {e}")
-        import traceback
-        print(f"❌ TRACEBACK: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{mecanico_id}/estadisticas-raw")
-def obtener_estadisticas_raw(mecanico_id: int, db: Session = Depends(get_db)):
-    """Endpoint raw sin modelo para debuggear"""
-    try:
-        mecanico = db.query(MecanicoModel).filter(MecanicoModel.id == mecanico_id).first()
-        if not mecanico:
-            raise HTTPException(status_code=404, detail="Mecánico no encontrado")
-        
-        # ✅ OBTENER DATOS REALES DE LA BASE DE DATOS
-        from app.models.comisiones_mecanicos import ComisionMecanico
-        
-        # Obtener comisiones del mecánico
-        comisiones = db.query(ComisionMecanico).filter(
-            ComisionMecanico.id_mecanico == mecanico_id
-        ).all()
-        
-        total_trabajos = len(comisiones)
-        total_ganancias = sum(float(c.ganancia_trabajo) for c in comisiones)
-        comisiones_mes = sum(float(c.monto_comision) for c in comisiones)
-        
-        # Devolver diccionario simple
-        return {
-            "id": mecanico.id,
-            "nombre": mecanico.nombre,
-            "telefono": mecanico.telefono,
-            "porcentaje_comision": float(mecanico.porcentaje_comision) if mecanico.porcentaje_comision else None,
-            "fecha_contratacion": mecanico.fecha_contratacion.isoformat() if mecanico.fecha_contratacion else None,
-            "activo": mecanico.activo,
-            "total_trabajos": total_trabajos,
-            "total_ganancias": total_ganancias,
-            "comisiones_mes": comisiones_mes
-        }
-    except Exception as e:
-        return {"error": str(e)}
 
 @router.get("/reporte/mensual/{mes}", response_model=List[MecanicoConEstadisticas])
 def obtener_reporte_mensual(mes: str, db: Session = Depends(get_db)):

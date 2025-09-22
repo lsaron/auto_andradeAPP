@@ -4,6 +4,7 @@ from typing import Optional, List
 class ClienteSchema(BaseModel):
     id_nacional: str  # ✅ Ahora usamos id_nacional en lugar de id
     nombre: str
+    apellido: Optional[str] = None
     correo: Optional[EmailStr] = None
     telefono: str
 

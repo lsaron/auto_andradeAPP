@@ -102,7 +102,7 @@ def obtener_todos_los_trabajos(db: Session = Depends(get_db)):
             "markup_repuestos": float(trabajo.markup_repuestos or 0.0),
             "ganancia": float(trabajo.ganancia or 0.0),
             "aplica_iva": trabajo.aplica_iva,
-            "cliente_nombre": cliente.nombre if cliente else "Sin cliente",
+            "cliente_nombre": f"{cliente.nombre} {cliente.apellido}".strip() if cliente else "Sin cliente",
             "cliente_id": cliente.id_nacional if cliente else None,
             "total_gastos": float(total_gastos),
             "ganancia_total": float(ganancia_total),  # Ganancia total del trabajo
@@ -192,7 +192,7 @@ def obtener_trabajo(id: int, db: Session = Depends(get_db)):
         "markup_repuestos": float(trabajo.markup_repuestos or 0.0),
         "ganancia": float(trabajo.ganancia or 0.0),
         "aplica_iva": trabajo.aplica_iva,
-        "cliente_nombre": cliente.nombre if cliente else "Sin cliente",
+        "cliente_nombre": f"{cliente.nombre} {cliente.apellido}".strip() if cliente else "Sin cliente",
         "cliente_id": cliente.id_nacional if cliente else None,
         "gastos": [
             {

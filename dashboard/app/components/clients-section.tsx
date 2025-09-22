@@ -62,12 +62,14 @@ export function ClientsSection() {
   const [newClient, setNewClient] = useState<ClientCreate>({
     id_nacional: "",
     name: "",
+    lastname: "",
     email: "",
     phone: "",
   })
   const [editClient, setEditClient] = useState<ClientCreate>({
     id_nacional: "",
     name: "",
+    lastname: "",
     email: "",
     phone: "",
   })
@@ -163,6 +165,7 @@ export function ClientsSection() {
       const transformedClients: Client[] = data.map((cliente: any) => ({
         id: cliente.id_nacional,
         name: cliente.nombre,
+        lastname: cliente.apellido || "",
         email: cliente.correo || "",
         phone: cliente.telefono || "",
         registration_date: new Date().toISOString().split("T")[0], // Default for now
@@ -296,6 +299,7 @@ export function ClientsSection() {
       (client) =>
         client.id.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
         client.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        (client.lastname && client.lastname.toLowerCase().includes(debouncedSearchTerm.toLowerCase())) ||
         client.email.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
         client.phone.includes(debouncedSearchTerm),
     )
@@ -334,6 +338,7 @@ export function ClientsSection() {
         body: JSON.stringify({
           id_nacional: newClient.id_nacional,
           nombre: newClient.name,
+          apellido: newClient.lastname,
           correo: newClient.email,
           telefono: newClient.phone,
         }),
@@ -350,6 +355,7 @@ export function ClientsSection() {
       setNewClient({
         id_nacional: "",
         name: "",
+        lastname: "",
         email: "",
         phone: "",
       })
@@ -376,6 +382,7 @@ export function ClientsSection() {
           body: JSON.stringify({
             id_nacional: selectedClient.id,
             nombre: editClient.name,
+            apellido: editClient.lastname,
             correo: editClient.email,
             telefono: editClient.phone,
           }),
@@ -392,6 +399,7 @@ export function ClientsSection() {
         setEditClient({
           id_nacional: "",
           name: "",
+          lastname: "",
           email: "",
           phone: "",
         })
@@ -444,6 +452,7 @@ export function ClientsSection() {
     setEditClient({
       id_nacional: client.id,
       name: client.name,
+      lastname: client.lastname || "",
       email: client.email,
       phone: client.phone,
     })
@@ -523,6 +532,18 @@ export function ClientsSection() {
                   onChange={(e) => setNewClient({ ...newClient, name: e.target.value })}
                   className="col-span-3"
                   placeholder="Nombre del cliente"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="lastname" className="text-right">
+                  Apellido
+                </Label>
+                <Input
+                  id="lastname"
+                  value={newClient.lastname || ""}
+                  onChange={(e) => setNewClient({ ...newClient, lastname: e.target.value })}
+                  className="col-span-3"
+                  placeholder="Apellido del cliente"
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -664,7 +685,9 @@ export function ClientsSection() {
               <TableBody>
                 {displayClients.map((client) => (
                   <TableRow key={client.id} className="hover:bg-gray-50">
-                    <TableCell className="font-medium">{client.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {client.name}{client.lastname ? ` ${client.lastname}` : ''}
+                    </TableCell>
                     <TableCell>
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 text-sm">
@@ -768,7 +791,9 @@ export function ClientsSection() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-sm font-medium text-gray-500">Nombre</Label>
-                    <p className="text-lg font-medium">{selectedClient.name}</p>
+                    <p className="text-lg font-medium">
+                      {selectedClient.name}{selectedClient.lastname ? ` ${selectedClient.lastname}` : ''}
+                    </p>
                   </div>
                   <div>
                     <Label className="text-sm font-medium text-gray-500">Total Gastado</Label>
@@ -862,6 +887,18 @@ export function ClientsSection() {
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-lastname" className="text-right">
+                Apellido
+              </Label>
+              <Input
+                id="edit-lastname"
+                value={editClient.lastname || ""}
+                onChange={(e) => setEditClient({ ...editClient, lastname: e.target.value })}
+                className="col-span-3"
+                placeholder="Apellido del cliente"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-email" className="text-right">
                 Email
               </Label>
@@ -923,7 +960,7 @@ export function ClientsSection() {
                     <span className="font-medium">ID Nacional:</span> {clientToDelete.id}
                   </div>
                   <div>
-                    <span className="font-medium">Cliente:</span> {clientToDelete.name}
+                    <span className="font-medium">Cliente:</span> {clientToDelete.name}{clientToDelete.lastname ? ` ${clientToDelete.lastname}` : ''}
                   </div>
                   <div>
                     <span className="font-medium">Email:</span> {clientToDelete.email}
