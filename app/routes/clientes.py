@@ -6,8 +6,9 @@ from app.models.database import get_db
 from app.models.clientes import Cliente
 from app.models.carros import Carro
 from app.models.trabajos import Trabajo
+from app.models.historial_duenos import HistorialDueno
 from app.schemas.clientes import ClienteSchema
-from sqlalchemy import func
+from sqlalchemy import func, text
 
 router = APIRouter()
 
@@ -103,13 +104,82 @@ def actualizar_cliente(id_nacional: str, cliente: ClienteSchema, db: Session = D
     if not cliente_db:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
-    cliente_db.nombre = cliente.nombre
-    cliente_db.apellido = cliente.apellido
-    cliente_db.correo = cliente.correo
-    cliente_db.telefono = cliente.telefono
+    try:
+        # Si la cédula cambió, verificar que no exista otro cliente con la nueva cédula
+        if cliente.id_nacional != id_nacional:
+            cliente_existente = db.query(Cliente).filter(Cliente.id_nacional == cliente.id_nacional).first()
+            if cliente_existente:
+                raise HTTPException(status_code=400, detail="Ya existe un cliente con esta cédula")
+            
+            # Deshabilitar temporalmente las restricciones de clave foránea
+            db.execute(text("SET FOREIGN_KEY_CHECKS = 0"))
+            
+            # Actualizar las referencias en la tabla carros usando SQL raw
+            db.execute(text("""
+                UPDATE carros 
+                SET id_cliente_actual = :nueva_cedula 
+                WHERE id_cliente_actual = :cedula_original
+            """), {"nueva_cedula": cliente.id_nacional, "cedula_original": id_nacional})
+            
+            # Actualizar las referencias en la tabla historial_duenos usando SQL raw
+            db.execute(text("""
+                UPDATE historial_duenos 
+                SET id_cliente = :nueva_cedula 
+                WHERE id_cliente = :cedula_original
+            """), {"nueva_cedula": cliente.id_nacional, "cedula_original": id_nacional})
+            
+            # Actualizar la cédula del cliente usando SQL raw
+            db.execute(text("""
+                UPDATE clientes 
+                SET id_nacional = :nueva_cedula,
+                    nombre = :nombre,
+                    apellido = :apellido,
+                    correo = :correo,
+                    telefono = :telefono
+                WHERE id_nacional = :cedula_original
+            """), {
+                "nueva_cedula": cliente.id_nacional,
+                "cedula_original": id_nacional,
+                "nombre": cliente.nombre,
+                "apellido": cliente.apellido,
+                "correo": cliente.correo,
+                "telefono": cliente.telefono
+            })
+            
+            # Rehabilitar las restricciones de clave foránea
+            db.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
+            
+        else:
+            # Si la cédula no cambió, solo actualizar los otros campos
+            db.execute(text("""
+                UPDATE clientes 
+                SET nombre = :nombre,
+                    apellido = :apellido,
+                    correo = :correo,
+                    telefono = :telefono
+                WHERE id_nacional = :cedula
+            """), {
+                "cedula": id_nacional,
+                "nombre": cliente.nombre,
+                "apellido": cliente.apellido,
+                "correo": cliente.correo,
+                "telefono": cliente.telefono
+            })
 
-    db.commit()
-    return cliente_db
+        db.commit()
+        
+        # Obtener el cliente actualizado
+        cliente_actualizado = db.query(Cliente).filter(Cliente.id_nacional == cliente.id_nacional).first()
+        return cliente_actualizado
+        
+    except Exception as e:
+        db.rollback()
+        # Rehabilitar las restricciones de clave foránea en caso de error
+        try:
+            db.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
+        except:
+            pass
+        raise HTTPException(status_code=500, detail=f"Error al actualizar cliente: {str(e)}")
 
 # Eliminar un cliente
 @router.delete("/clientes/{id_nacional}")

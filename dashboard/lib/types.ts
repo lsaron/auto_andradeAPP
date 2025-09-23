@@ -5,7 +5,7 @@ export interface Client {
   lastname?: string
   email: string
   phone: string
-  address: string
+  address?: string
   registration_date: string
   total_spent: number
   vehicle_count?: number
@@ -14,14 +14,16 @@ export interface Client {
 }
 
 export interface ClientCreate {
+  id_nacional: string
   name: string
   lastname?: string
   email: string
   phone: string
-  address: string
+  address?: string
 }
 
 export interface ClientUpdate {
+  id_nacional?: string
   name?: string
   lastname?: string
   email?: string

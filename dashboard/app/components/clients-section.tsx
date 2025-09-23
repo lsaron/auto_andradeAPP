@@ -9,25 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Edit, Eye, Plus, Trash2, Phone, Mail, Search, X, Car, AlertTriangle } from "lucide-react"
-
-interface Client {
-  id: string
-  name: string
-  email: string
-  phone: string
-  registration_date: string
-  total_spent: number
-  vehicle_count: number
-  created_at: string
-  updated_at: string
-}
-
-interface ClientCreate {
-  id_nacional: string
-  name: string
-  email: string
-  phone: string
-}
+import { Client, ClientCreate } from "@/lib/types"
 
 interface Vehicle {
   id: string
@@ -380,7 +362,7 @@ export function ClientsSection() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            id_nacional: selectedClient.id,
+            id_nacional: editClient.id_nacional,
             nombre: editClient.name,
             apellido: editClient.lastname,
             correo: editClient.email,
@@ -871,7 +853,6 @@ export function ClientsSection() {
                 onChange={(e) => setEditClient({ ...editClient, id_nacional: e.target.value })}
                 className="col-span-3"
                 placeholder="123456789"
-                disabled
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
