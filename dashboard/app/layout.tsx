@@ -6,9 +6,14 @@ import "./globals.css"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Auto Andrade - Sistema de Gestión",
+  title: "Auto Andrade",
   description: "Sistema de gestión para taller mecánico Auto Andrade",
-    generator: 'kroma-studios'
+  generator: 'kroma-studios',
+  icons: {
+    icon: '/auto-andrade.png',
+    shortcut: '/auto-andrade.png',
+    apple: '/auto-andrade.png',
+  },
 }
 
 export default function RootLayout({
