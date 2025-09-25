@@ -13,11 +13,17 @@ router = APIRouter(prefix="/gastos-taller", tags=["gastos-taller"])
 def crear_gasto_taller(gasto: GastoTallerCreate, db: Session = Depends(get_db)):
     """Crear un nuevo gasto del taller"""
     try:
+        # Si el gasto se crea como PAGADO, establecer fecha_pago igual a fecha_gasto
+        fecha_pago = None
+        if gasto.estado == EstadoGasto.PAGADO:
+            fecha_pago = gasto.fecha_gasto
+        
         db_gasto = GastoTallerModel(
             descripcion=gasto.descripcion,
             monto=gasto.monto,
             categoria=gasto.categoria,
             fecha_gasto=gasto.fecha_gasto,
+            fecha_pago=fecha_pago,
             estado=gasto.estado
         )
         db.add(db_gasto)
@@ -141,6 +147,14 @@ def cambiar_estado_gasto(
         # Convertir el string al enum del modelo
         estado_modelo = EstadoGasto(nuevo_estado_str)
         db_gasto.estado = estado_modelo
+        
+        # Si se cambia a PAGADO, establecer fecha_pago a la fecha actual
+        if estado_modelo == EstadoGasto.PAGADO and db_gasto.fecha_pago is None:
+            db_gasto.fecha_pago = datetime.utcnow()
+        # Si se cambia a PENDIENTE, limpiar fecha_pago
+        elif estado_modelo == EstadoGasto.PENDIENTE:
+            db_gasto.fecha_pago = None
+        
         db_gasto.updated_at = datetime.utcnow()
         
         db.commit()

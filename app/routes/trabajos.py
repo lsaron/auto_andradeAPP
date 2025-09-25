@@ -97,6 +97,7 @@ def obtener_todos_los_trabajos(db: Session = Depends(get_db)):
             "matricula_carro": trabajo.matricula_carro,
             "descripcion": trabajo.descripcion,
             "fecha": trabajo.fecha.strftime("%Y-%m-%d"),
+            "fecha_registro": trabajo.fecha_registro.strftime("%Y-%m-%d") if trabajo.fecha_registro else trabajo.fecha.strftime("%Y-%m-%d"),
             "costo": float(costo),
             "mano_obra": float(trabajo.mano_obra or 0.0),
             "markup_repuestos": float(trabajo.markup_repuestos or 0.0),
@@ -137,6 +138,7 @@ def crear_trabajo(trabajo: TrabajoSchema, db: Session = Depends(get_db)):
         matricula_carro=trabajo.matricula_carro,
         descripcion=trabajo.descripcion,
         fecha=trabajo.fecha,
+        fecha_registro=trabajo.fecha_registro if trabajo.fecha_registro else trabajo.fecha,
         costo=trabajo.costo,
         mano_obra=trabajo.mano_obra or 0.0,
         markup_repuestos=trabajo.markup_repuestos or 0.0,
@@ -187,6 +189,7 @@ def obtener_trabajo(id: int, db: Session = Depends(get_db)):
         "matricula_carro": trabajo.matricula_carro,
         "descripcion": trabajo.descripcion,
         "fecha": trabajo.fecha.strftime("%Y-%m-%d"),
+        "fecha_registro": trabajo.fecha_registro.strftime("%Y-%m-%d") if trabajo.fecha_registro else trabajo.fecha.strftime("%Y-%m-%d"),
         "costo": trabajo.costo,
         "mano_obra": float(trabajo.mano_obra or 0.0),
         "markup_repuestos": float(trabajo.markup_repuestos or 0.0),
@@ -230,6 +233,8 @@ def actualizar_trabajo(id: int, trabajo: TrabajoSchema, db: Session = Depends(ge
     trabajo_db.markup_repuestos = trabajo.markup_repuestos or 0.0
     trabajo_db.ganancia = ganancia_neta
     trabajo_db.aplica_iva = trabajo.aplica_iva
+    # Actualizar fecha a la fecha actual (última modificación)
+    trabajo_db.fecha = datetime.utcnow()
     
     # Eliminar gastos existentes
     db.query(DetalleGasto).filter(DetalleGasto.id_trabajo == id).delete()

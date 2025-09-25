@@ -174,6 +174,7 @@ interface WorkOrder {
   descripcion: string
   costo: number
   fecha: string
+  fecha_registro?: string  // Fecha original de registro
   mano_obra: number
   markup_repuestos: number
   ganancia: number
@@ -199,7 +200,9 @@ interface GastoTaller {
   descripcion: string
   monto: number
   fecha_gasto: string
+  fecha_pago?: string | null  // Nueva propiedad para fecha de pago
   categoria: string
+  estado?: string  // Agregar estado para compatibilidad
 }
 
 interface PagoSalario {
@@ -556,9 +559,11 @@ export default function ReportsSection() {
     // Calcular ingresos del mes anterior
     const prevTotalIncome = prevMonthWorkOrders.reduce((sum, wo) => sum + wo.costo, 0)
 
-    // Filtrar gastos del taller del mes anterior
+    // Filtrar gastos del taller del mes anterior (usar fecha_pago si está disponible)
     const prevMonthGastos = gastosTaller.filter(g => {
-      const gastoDate = new Date(g.fecha_gasto)
+      // Para gastos pagados, usar fecha_pago si existe, sino fecha_gasto
+      const fechaRelevante = g.fecha_pago || g.fecha_gasto
+      const gastoDate = new Date(fechaRelevante)
       return gastoDate >= startDate && gastoDate <= endDate
     })
     const prevGastosTallerTotal = prevMonthGastos.reduce((sum, g) => sum + Number(g.monto), 0)
@@ -661,9 +666,11 @@ export default function ReportsSection() {
         return añoTrabajo === año && mesTrabajo === mes
       })
       
-      // Filtrar gastos del mes (solo PAGADOS)
+      // Filtrar gastos del mes (solo PAGADOS, usar fecha_pago si está disponible)
       const gastosMes = gastosTaller.filter(g => {
-        const fechaGasto = new Date(g.fecha_gasto)
+        // Para gastos pagados, usar fecha_pago si existe, sino fecha_gasto
+        const fechaRelevante = g.fecha_pago || g.fecha_gasto
+        const fechaGasto = new Date(fechaRelevante)
         const añoGasto = fechaGasto.getFullYear()
         const mesGasto = fechaGasto.getMonth() + 1
         return añoGasto === año && mesGasto === mes && (g as any).estado === 'PAGADO'
@@ -756,9 +763,11 @@ export default function ReportsSection() {
     // Calcular ingresos
     const totalIncome = monthWorkOrders.reduce((sum, wo) => sum + wo.costo, 0)
 
-    // Filtrar gastos del taller del mes
+    // Filtrar gastos del taller del mes (usar fecha_pago si está disponible)
     const monthGastos = gastosTaller.filter(g => {
-      const gastoDate = new Date(g.fecha_gasto)
+      // Para gastos pagados, usar fecha_pago si existe, sino fecha_gasto
+      const fechaRelevante = g.fecha_pago || g.fecha_gasto
+      const gastoDate = new Date(fechaRelevante)
       return gastoDate >= startDate && gastoDate <= endDate
     })
 
@@ -1730,7 +1739,7 @@ export default function ReportsSection() {
                   />
                   <YAxis 
                     tick={{ fontSize: 12 }}
-                    tickFormatter={(value) => `₡${(value / 1000).toFixed(0)}k`}
+                    tickFormatter={(value: number) => `₡${((value || 0) / 1000).toFixed(0)}k`}
                   />
                   <Tooltip 
                     formatter={(value, name, props) => {

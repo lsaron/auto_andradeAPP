@@ -5,6 +5,7 @@ import { buildApiUrl } from "../lib/api-config"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -39,6 +40,7 @@ interface GastoTaller {
   monto: number
   categoria: string
   fecha_gasto: string
+  fecha_pago?: string | null  // Nueva propiedad para fecha de pago
   estado: 'PENDIENTE' | 'PAGADO'
   created_at: string
   updated_at: string
@@ -96,6 +98,7 @@ interface EstadoQuincena {
 export function TallerSection() {
   // Estados para gastos del taller
   const [gastos, setGastos] = useState<GastoTaller[]>([])
+  const [gastosPendientes, setGastosPendientes] = useState<GastoTaller[]>([]) // Todos los gastos pendientes sin filtro
   const [loadingGastos, setLoadingGastos] = useState(true)
   const [errorGastos, setErrorGastos] = useState<string | null>(null)
   const [searchTermGastos, setSearchTermGastos] = useState("")
@@ -265,11 +268,47 @@ export function TallerSection() {
 
 
 
+  // Función para cargar todos los gastos pendientes (sin filtro de fecha)
+  const cargarGastosPendientes = useCallback(async () => {
+    try {
+      console.log("💰 Cargando todos los gastos pendientes...")
+      
+      const response = await fetch(buildApiUrl('/gastos-taller'))
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      const data = await response.json()
+      
+      // Convertir los datos al formato esperado por el frontend
+      const gastosFormateados = data.map((gasto: any) => ({
+        id: gasto.id.toString(),
+        descripcion: gasto.descripcion,
+        monto: parseFloat(gasto.monto),
+        categoria: gasto.categoria,
+        fecha_gasto: gasto.fecha_gasto.split('T')[0],
+        fecha_pago: gasto.fecha_pago ? gasto.fecha_pago.split('T')[0] : null,
+        estado: gasto.estado || 'PENDIENTE',
+        created_at: gasto.created_at,
+        updated_at: gasto.updated_at
+      }))
+      
+      // Filtrar solo los gastos pendientes
+      const gastosPendientesFiltrados = gastosFormateados.filter((gasto: GastoTaller) => gasto.estado === 'PENDIENTE')
+      
+      console.log("💰 Gastos pendientes cargados:", gastosPendientesFiltrados)
+      setGastosPendientes(gastosPendientesFiltrados)
+    } catch (error) {
+      console.error("❌ Error al cargar gastos pendientes:", error)
+    }
+  }, [])
+
   const cargarDatos = useCallback(async () => {
     try {
       console.log("📊 Cargando datos...")
       // Cargar gastos del taller
       await cargarGastos()
+      // Cargar todos los gastos pendientes (sin filtro de fecha)
+      await cargarGastosPendientes()
       // Cargar pagos de salarios
       await cargarPagosSalarios()
       // Cargar mecánicos
@@ -287,7 +326,7 @@ export function TallerSection() {
         console.error("❌ Error desconocido:", error)
       }
     }
-  }, [selectedYear, selectedMonth])
+  }, [selectedYear, selectedMonth, filtroEstadoGastos, cargarGastosPendientes])
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -409,24 +448,36 @@ export function TallerSection() {
         monto: parseFloat(gasto.monto),
         categoria: gasto.categoria,
         fecha_gasto: gasto.fecha_gasto.split('T')[0], // Convertir a formato YYYY-MM-DD
+        fecha_pago: gasto.fecha_pago ? gasto.fecha_pago.split('T')[0] : null, // Incluir fecha_pago
         estado: gasto.estado || 'PENDIENTE', // Incluir estado, por defecto PENDIENTE
         created_at: gasto.created_at,
         updated_at: gasto.updated_at
       }))
       console.log("💰 Gastos formateados:", gastosFormateados)
       
-              // Filtrar por año y mes seleccionados
+      let gastosFiltrados: GastoTaller[]
+      
+      // Si el filtro de estado es "PENDIENTE", mostrar TODOS los gastos pendientes sin filtro de fecha
+      if (filtroEstadoGastos === 'PENDIENTE') {
+        console.log("💰 Mostrando TODOS los gastos pendientes sin filtro de fecha")
+        gastosFiltrados = gastosFormateados.filter((gasto: GastoTaller) => gasto.estado === 'PENDIENTE')
+      } else {
+        // Para "TODOS" y "PAGADO", aplicar el filtro normal por año y mes
         console.log(`Filtrando gastos - SelectedYear: ${selectedYear}, SelectedMonth: ${selectedMonth}`)
-        const gastosFiltrados = gastosFormateados.filter((gasto: GastoTaller) => {
-          const fechaGasto = new Date(gasto.fecha_gasto)
+        gastosFiltrados = gastosFormateados.filter((gasto: GastoTaller) => {
+          // Para gastos pagados, usar fecha_pago si existe, sino fecha_gasto
+          // Para gastos pendientes, usar fecha_gasto
+          const fechaRelevante = gasto.estado === 'PAGADO' && gasto.fecha_pago ? gasto.fecha_pago : gasto.fecha_gasto
+          const fechaGasto = new Date(fechaRelevante)
           const anoGasto = fechaGasto.getFullYear()
           const mesGasto = fechaGasto.getMonth()
           const coincide = anoGasto === selectedYear && mesGasto === selectedMonth
           
-          console.log(`Gasto: ${gasto.descripcion}, Fecha: ${gasto.fecha_gasto}, Año: ${anoGasto}, Mes: ${mesGasto}, Selected: ${selectedYear}/${selectedMonth}, Coincide: ${coincide}`)
+          console.log(`Gasto: ${gasto.descripcion}, Estado: ${gasto.estado}, Fecha relevante: ${fechaRelevante}, Año: ${anoGasto}, Mes: ${mesGasto}, Selected: ${selectedYear}/${selectedMonth}, Coincide: ${coincide}`)
           
           return coincide
         })
+      }
        
       console.log("💰 Gastos filtrados:", gastosFiltrados)
       setGastos(gastosFiltrados)
@@ -444,7 +495,7 @@ export function TallerSection() {
     } finally {
       setLoadingGastos(false)
     }
-  }, [selectedYear, selectedMonth])
+  }, [selectedYear, selectedMonth, filtroEstadoGastos])
 
   // Función para cargar pagos de salarios
   const cargarPagosSalarios = useCallback(async () => {
@@ -568,14 +619,29 @@ export function TallerSection() {
     return gastosFiltrados
   }, [gastos, searchTermGastos, filtroEstadoGastos])
 
-  // Estadísticas de gastos del taller
-  const statsGastosTaller = useMemo(() => {
-    const totalGastos = gastos.length
-    const totalMonto = gastos.reduce((sum, gasto) => sum + gasto.monto, 0)
+  // Estadísticas de gastos pendientes (independientes del filtro de fecha)
+  const statsGastosPendientes = useMemo(() => {
+    const totalPendientes = gastosPendientes.length
+    const totalMontoPendientes = gastosPendientes.reduce((sum, gasto) => sum + gasto.monto, 0)
     
-    // Usar las fechas seleccionadas en lugar de la fecha actual
-    const gastosMes = gastos.filter(gasto => {
-      const fechaGasto = new Date(gasto.fecha_gasto)
+    return {
+      totalPendientes,
+      totalMontoPendientes
+    }
+  }, [gastosPendientes])
+
+  // Estadísticas de gastos del taller (solo gastos pagados)
+  const statsGastosTaller = useMemo(() => {
+    // Filtrar solo gastos pagados
+    const gastosPagados = gastos.filter(gasto => gasto.estado === 'PAGADO')
+    const totalGastos = gastosPagados.length
+    const totalMonto = gastosPagados.reduce((sum, gasto) => sum + gasto.monto, 0)
+    
+    // Usar fecha_pago para gastos pagados, fecha_gasto para pendientes
+    const gastosMes = gastosPagados.filter(gasto => {
+      // Para gastos pagados, usar fecha_pago si existe, sino fecha_gasto
+      const fechaRelevante = gasto.fecha_pago || gasto.fecha_gasto
+      const fechaGasto = new Date(fechaRelevante)
       return fechaGasto.getMonth() === selectedMonth && 
              fechaGasto.getFullYear() === selectedYear
     })
@@ -610,9 +676,12 @@ export function TallerSection() {
     }
   }, [pagosSalarios, selectedYear, selectedMonth])
 
-  // Estadísticas combinadas (gastos + salarios)
+  // Estadísticas combinadas (solo gastos pagados + salarios)
   const statsCombinadas = useMemo(() => {
+    // Total Gastos: Solo gastos pagados + salarios totales (sin pendientes)
     const totalGastosCombinados = statsGastosTaller.totalMonto + statsSalarios.totalSalarios
+    
+    // Total del Mes: Solo gastos pagados del mes + salarios del mes (sin pendientes)
     const totalMesCombinado = statsGastosTaller.totalMes + statsSalarios.totalMes
     
     return {
@@ -665,6 +734,7 @@ export function TallerSection() {
         monto: parseFloat(gastoCreado.monto),
         categoria: gastoCreado.categoria,
         fecha_gasto: gastoCreado.fecha_gasto.split('T')[0],
+        fecha_pago: gastoCreado.fecha_pago ? gastoCreado.fecha_pago.split('T')[0] : null,
         estado: gastoCreado.estado || newGasto.estado || 'PENDIENTE',
         created_at: gastoCreado.created_at,
         updated_at: gastoCreado.updated_at
@@ -674,6 +744,12 @@ export function TallerSection() {
       console.log("🔍 Gasto formateado para el frontend:", gastoFormateado)
       
       setGastos(prev => [...prev, gastoFormateado])
+      
+      // Si el gasto creado es pendiente, agregarlo también a la lista de gastos pendientes
+      if (gastoFormateado.estado === 'PENDIENTE') {
+        setGastosPendientes(prev => [...prev, gastoFormateado])
+      }
+      
       setNewGasto({
         descripcion: "",
         monto: 0,
@@ -727,6 +803,7 @@ export function TallerSection() {
         monto: parseFloat(gastoActualizado.monto),
         categoria: gastoActualizado.categoria,
         fecha_gasto: gastoActualizado.fecha_gasto.split('T')[0],
+        fecha_pago: gastoActualizado.fecha_pago ? gastoActualizado.fecha_pago.split('T')[0] : null,
         estado: gastoActualizado.estado || 'PENDIENTE',
         created_at: gastoActualizado.created_at,
         updated_at: gastoActualizado.updated_at
@@ -764,6 +841,12 @@ export function TallerSection() {
       }
       
       setGastos(prev => prev.filter(gasto => gasto.id !== selectedGasto.id))
+      
+      // Si el gasto eliminado era pendiente, removerlo también de la lista de gastos pendientes
+      if (selectedGasto.estado === 'PENDIENTE') {
+        setGastosPendientes(prev => prev.filter(gasto => gasto.id !== selectedGasto.id))
+      }
+      
       setIsDeleteGastoDialogOpen(false)
       setSelectedGasto(null)
     } catch (error) {
@@ -797,6 +880,9 @@ export function TallerSection() {
           ? { ...gasto, estado: 'PAGADO' }
           : gasto
       ))
+      
+      // Actualizar también la lista de gastos pendientes (remover el gasto que se marcó como pagado)
+      setGastosPendientes(prev => prev.filter(gasto => gasto.id !== gastoId))
       
       console.log(`✅ Gasto ${gastoId} marcado como PAGADO`)
     } catch (error) {
@@ -1440,7 +1526,7 @@ export function TallerSection() {
       {/* ======================================== */}
       {/* TARJETA: ESTADÍSTICAS PRINCIPALES */}
       {/* ======================================== */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 shadow-lg">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-blue-800">Total Gastos</CardTitle>
@@ -1451,7 +1537,7 @@ export function TallerSection() {
           <CardContent>
             <div className="text-3xl font-bold text-blue-900 mb-1">₡{statsCombinadas.totalGastosCombinados.toLocaleString()}</div>
             <p className="text-xs text-blue-700">
-              Gastos del taller + Salarios totales
+              Gastos pagados + Salarios totales
             </p>
             {!isCurrentPeriod && (
               <p className="text-xs text-blue-600 mt-1 font-medium">
@@ -1469,9 +1555,9 @@ export function TallerSection() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-green-900 mb-1">₡{statsCombinadas.totalMesCombinado.toLocaleString()}</div>
+            <div className="text-3xl font-bold text-green-900 mb-1">₡{statsGastosTaller.totalMes.toLocaleString()}</div>
             <p className="text-xs text-green-700">
-              {statsGastosTaller.gastosMes + statsSalarios.pagosMes} registros este mes
+              {statsGastosTaller.gastosMes} gastos pagados este mes
             </p>
           </CardContent>
         </Card>
@@ -1487,6 +1573,21 @@ export function TallerSection() {
             <div className="text-3xl font-bold text-purple-900 mb-1">₡{statsSalarios.totalMes.toLocaleString()}</div>
             <p className="text-xs text-purple-700">
               {statsSalarios.pagosMes} pagos este mes
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 shadow-lg">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-orange-800">Gastos Pendientes</CardTitle>
+            <div className="p-2 bg-orange-500 rounded-lg">
+              <Clock className="h-4 w-4 text-white" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-orange-900 mb-1">₡{statsGastosPendientes.totalMontoPendientes.toLocaleString()}</div>
+            <p className="text-xs text-orange-700">
+              {statsGastosPendientes.totalPendientes} gastos por pagar
             </p>
           </CardContent>
         </Card>
@@ -1630,6 +1731,7 @@ export function TallerSection() {
                         <TableHead>Categoría</TableHead>
                         <TableHead>Monto</TableHead>
                         <TableHead>Fecha</TableHead>
+                        <TableHead>Fecha de Pago</TableHead>
                         <TableHead>Estado</TableHead>
                         <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
@@ -1653,6 +1755,9 @@ export function TallerSection() {
                             </TableCell>
                             <TableCell>
                               {new Date(gasto.fecha_gasto).toLocaleDateString('es-CR')}
+                            </TableCell>
+                            <TableCell>
+                              {gasto.fecha_pago ? new Date(gasto.fecha_pago).toLocaleDateString('es-CR') : '-'}
                             </TableCell>
                             <TableCell>
                               <Badge 
@@ -1796,11 +1901,13 @@ export function TallerSection() {
           <div className="space-y-4">
             <div>
               <Label htmlFor="descripcion">Descripción</Label>
-              <Input
+              <Textarea
                 id="descripcion"
                 value={newGasto.descripcion}
                 onChange={(e) => setNewGasto(prev => ({ ...prev, descripcion: e.target.value }))}
                 placeholder="Desc..."
+                rows={3}
+                className="resize-none"
               />
             </div>
                          <div>
@@ -2288,7 +2395,9 @@ export function TallerSection() {
               <div className="grid gap-3">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Descripción</p>
-                  <p className="text-lg">{selectedGasto.descripcion}</p>
+                  <div className="text-lg whitespace-pre-wrap bg-gray-50 p-3 rounded-md border">
+                    {selectedGasto.descripcion}
+                  </div>
                 </div>
 
                 <div>
@@ -2358,11 +2467,13 @@ export function TallerSection() {
           <div className="space-y-4">
             <div>
               <Label htmlFor="edit_descripcion">Descripción</Label>
-              <Input
+              <Textarea
                 id="edit_descripcion"
                 value={editGasto.descripcion}
                 onChange={(e) => setEditGasto(prev => ({ ...prev, descripcion: e.target.value }))}
-                placeholder="Pagos"
+                placeholder="Desc..."
+                rows={3}
+                className="resize-none"
               />
             </div>
                          <div>

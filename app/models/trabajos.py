@@ -9,7 +9,8 @@ class Trabajo(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     matricula_carro = Column(String(20), ForeignKey("carros.matricula", ondelete="CASCADE"))
     descripcion = Column(String(255))
-    fecha = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    fecha = Column(DateTime, default=lambda: datetime.now(timezone.utc))  # Fecha de última actualización
+    fecha_registro = Column(DateTime, default=lambda: datetime.now(timezone.utc))  # Fecha original de registro
     costo = Column(DECIMAL(10, 2))  # Total cobrado al cliente
     mano_obra = Column(DECIMAL(10, 2), default=0.00)  # Monto de mano de obra del trabajo
     markup_repuestos = Column(DECIMAL(10, 2), default=0.00)  # Markup aplicado a los repuestos

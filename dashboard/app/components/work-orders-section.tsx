@@ -24,6 +24,7 @@ interface WorkOrder {
   expenses: number
   profit: number
   date: string
+  fecha_registro?: string  // Fecha original de registro
   clientName: string
   clientId: string
   carId: string
@@ -947,6 +948,7 @@ export function WorkOrdersSection() {
           expenses: trabajo.total_gastos,
           profit: trabajo.ganancia,
           date: trabajo.fecha,
+          fecha_registro: trabajo.fecha_registro || trabajo.fecha, // Fecha original de registro
           clientName: trabajo.cliente_nombre,
           clientId: trabajo.cliente_id || "",
           carId: trabajo.matricula_carro,
@@ -2923,7 +2925,14 @@ export function WorkOrdersSection() {
               {/* Header with status */}
               <div>
                 <h3 className="text-lg font-semibold">{selectedWorkOrder.id}</h3>
-                <p className="text-sm text-muted-foreground">Fecha: {formatDate(selectedWorkOrder.date)}</p>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">
+                    Fecha de ingreso: {formatDate(selectedWorkOrder.fecha_registro || selectedWorkOrder.date)}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Fecha de salida: {formatDate(selectedWorkOrder.date)}
+                  </p>
+                </div>
               </div>
 
               {/* Vehicle and client info */}

@@ -18,6 +18,7 @@ class TrabajoSchema(BaseModel):
     matricula_carro: str
     descripcion: str
     fecha: date
+    fecha_registro: Optional[date] = None  # Fecha original de registro
     costo: float
     mano_obra: Optional[float] = 0.0  # Monto de mano de obra del trabajo
     markup_repuestos: Optional[float] = 0.0  # Markup aplicado a los repuestos

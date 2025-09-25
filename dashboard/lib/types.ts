@@ -80,6 +80,7 @@ export interface WorkOrder {
   expenses: number
   profit: number
   date: string
+  fecha_registro?: string  // Fecha original de registro
   mechanic_name?: string
   parts?: string[]
   labor_hours?: number
