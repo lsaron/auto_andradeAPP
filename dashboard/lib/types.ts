@@ -1,34 +1,32 @@
 // Updated TypeScript interfaces without status fields
 export interface Client {
-  id: string
-  name: string
-  lastname?: string
-  email: string
-  phone: string
-  address?: string
+  id_nacional: string
+  nombre: string
+  apellido?: string
+  correo: string
+  telefono?: string
+  tipo_cliente: 'PERSONA' | 'EMPRESA'
   registration_date: string
-  total_spent: number
+  total_gastado: number
   vehicle_count?: number
   created_at: string
   updated_at: string
 }
 
 export interface ClientCreate {
-  id_nacional: string
-  name: string
-  lastname?: string
-  email: string
-  phone: string
-  address?: string
+  nombre: string
+  apellido?: string
+  correo: string
+  telefono?: string
+  tipo_cliente: 'PERSONA' | 'EMPRESA'
 }
 
 export interface ClientUpdate {
-  id_nacional?: string
-  name?: string
-  lastname?: string
-  email?: string
-  phone?: string
-  address?: string
+  nombre?: string
+  apellido?: string
+  correo?: string
+  telefono?: string
+  tipo_cliente?: 'PERSONA' | 'EMPRESA'
 }
 
 export interface Car {

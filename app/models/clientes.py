@@ -1,6 +1,11 @@
-from sqlalchemy import Column, String
+from sqlalchemy import Column, String, Enum
 from sqlalchemy.orm import relationship
 from .database import Base
+import enum
+
+class TipoCliente(str, enum.Enum):
+    PERSONA = "PERSONA"
+    EMPRESA = "EMPRESA"
 
 class Cliente(Base):
     __tablename__ = "clientes"
@@ -9,7 +14,8 @@ class Cliente(Base):
     nombre = Column(String(100))
     apellido = Column(String(100), nullable=True)
     correo = Column(String(100), nullable=True)
-    telefono = Column(String(20))
+    telefono = Column(String(20), nullable=True)
+    tipo_cliente = Column(Enum(TipoCliente), nullable=False, default=TipoCliente.PERSONA)
 
     # ✅ Relación con Carros
     carros = relationship("Carro", back_populates="cliente_actual")

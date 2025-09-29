@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Edit, Eye, Plus, Trash2, Phone, Mail, Search, X, Car, AlertTriangle } from "lucide-react"
@@ -42,19 +43,20 @@ export function ClientsSection() {
   const [totalClients, setTotalClients] = useState(0)
   const [filteredClients, setFilteredClients] = useState<Client[]>([])
   const [newClient, setNewClient] = useState<ClientCreate>({
-    id_nacional: "",
-    name: "",
-    lastname: "",
-    email: "",
-    phone: "",
+    nombre: "",
+    apellido: "",
+    correo: "",
+    telefono: "",
+    tipo_cliente: "PERSONA"
   })
   const [editClient, setEditClient] = useState<ClientCreate>({
-    id_nacional: "",
-    name: "",
-    lastname: "",
-    email: "",
-    phone: "",
+    nombre: "",
+    apellido: "",
+    correo: "",
+    telefono: "",
+    tipo_cliente: "PERSONA"
   })
+  const [personaIdNacional, setPersonaIdNacional] = useState("")
 
   // Funciones de formateo de teléfono
   const formatPhoneNumber = (phone: string): string => {
@@ -96,7 +98,7 @@ export function ClientsSection() {
     // Agregar +506 automáticamente solo si hay números
     const formattedNumber = limitedDigits ? `+506${limitedDigits}` : ""
     
-    setter({ ...currentClient, phone: formattedNumber })
+    setter({ ...currentClient, telefono: formattedNumber })
   }
 
   // Load clients on component mount
@@ -145,13 +147,14 @@ export function ClientsSection() {
       
       // Transform backend data to frontend format
       const transformedClients: Client[] = data.map((cliente: any) => ({
-        id: cliente.id_nacional,
-        name: cliente.nombre,
-        lastname: cliente.apellido || "",
-        email: cliente.correo || "",
-        phone: cliente.telefono || "",
+        id_nacional: cliente.id_nacional,
+        nombre: cliente.nombre,
+        apellido: cliente.apellido || "",
+        correo: cliente.correo || "",
+        telefono: cliente.telefono || "",
+        tipo_cliente: cliente.tipo_cliente || "PERSONA",
         registration_date: new Date().toISOString().split("T")[0], // Default for now
-        total_spent: cliente.total_gastado || 0, // Use total_gastado from backend
+        total_gastado: cliente.total_gastado || 0, // Use total_gastado from backend
         vehicle_count: 0, // Will be updated when loading vehicles
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -160,7 +163,7 @@ export function ClientsSection() {
       // Ordenar por ID descendente (más recientes primero)
       const sortedClients = transformedClients.sort((a, b) => {
         // Usar el ID nacional como criterio de ordenamiento
-        return b.id.localeCompare(a.id)
+        return b.id_nacional.localeCompare(a.id_nacional)
       })
 
       if (reset) {
@@ -222,7 +225,7 @@ export function ClientsSection() {
       
       for (const client of clientsList) {
         try {
-          const response = await fetch(`http://localhost:8000/api/clientes/${client.id}`)
+          const response = await fetch(`http://localhost:8000/api/clientes/${client.id_nacional}`)
           if (response.ok) {
             const clientData = await response.json()
             
@@ -235,25 +238,25 @@ export function ClientsSection() {
               color: "N/A", // Not available in backend
             }))
             
-            vehiclesData[client.id] = vehicles
+            vehiclesData[client.id_nacional] = vehicles
             
-            console.log(`🚗 Client ${client.name}: ${vehicles.length} vehicles loaded`)
+            console.log(`🚗 Client ${client.nombre}: ${vehicles.length} vehicles loaded`)
             
             // Update client with vehicle count
             setClients(prev => {
               const updated = prev.map(c => 
-                c.id === client.id 
+                c.id_nacional === client.id_nacional 
                   ? { ...c, vehicle_count: vehicles.length }
                   : c
               )
-              console.log(`📊 Updated client ${client.name} with ${vehicles.length} vehicles`)
+              console.log(`📊 Updated client ${client.nombre} with ${vehicles.length} vehicles`)
               return updated
             })
             
             // Also update filteredClients
             setFilteredClients(prev => {
               const updated = prev.map(c => 
-                c.id === client.id 
+                c.id_nacional === client.id_nacional 
                   ? { ...c, vehicle_count: vehicles.length }
                   : c
               )
@@ -261,8 +264,8 @@ export function ClientsSection() {
             })
           }
         } catch (error) {
-          console.error(`Error loading vehicles for client ${client.id}:`, error)
-          vehiclesData[client.id] = []
+          console.error(`Error loading vehicles for client ${client.id_nacional}:`, error)
+          vehiclesData[client.id_nacional] = []
         }
       }
       
@@ -279,11 +282,11 @@ export function ClientsSection() {
 
     return filteredClients.filter(
       (client) =>
-        client.id.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-        client.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-        (client.lastname && client.lastname.toLowerCase().includes(debouncedSearchTerm.toLowerCase())) ||
-        client.email.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-        client.phone.includes(debouncedSearchTerm),
+        client.nombre.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        (client.apellido && client.apellido.toLowerCase().includes(debouncedSearchTerm.toLowerCase())) ||
+        client.correo.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        (client.telefono && client.telefono.includes(debouncedSearchTerm)) ||
+        client.id_nacional.includes(debouncedSearchTerm),
     )
   }, [filteredClients, debouncedSearchTerm])
 
@@ -292,39 +295,55 @@ export function ClientsSection() {
     setValidationError("")
     
     // Validate required fields
-    if (!newClient.id_nacional) {
-      setValidationError("El ID Nacional es obligatorio")
-      return
-    }
-    if (!newClient.name) {
+    if (!newClient.nombre) {
       setValidationError("El nombre es obligatorio")
       return
     }
-    if (!newClient.email) {
-      setValidationError("El email es obligatorio")
+    if (!newClient.correo) {
+      setValidationError("El correo es obligatorio")
       return
     }
-    if (!newClient.phone) {
-      setValidationError("El teléfono es obligatorio")
-      return
+    
+    // Para personas físicas, validar cédula y apellido
+    if (newClient.tipo_cliente === "PERSONA") {
+      if (!personaIdNacional) {
+        setValidationError("La cédula es obligatoria para personas físicas")
+        return
+      }
+      if (!newClient.apellido) {
+        setValidationError("El apellido es obligatorio para personas físicas")
+        return
+      }
+      if (!newClient.telefono) {
+        setValidationError("El teléfono es obligatorio para personas físicas")
+        return
+      }
     }
     
     setIsLoading(true)
 
     try {
-      const response = await fetch("http://localhost:8000/api/clientes/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id_nacional: newClient.id_nacional,
-          nombre: newClient.name,
-          apellido: newClient.lastname,
-          correo: newClient.email,
-          telefono: newClient.phone,
-        }),
-      })
+      let response: Response
+      
+      if (newClient.tipo_cliente === "EMPRESA") {
+        // Crear empresa - auto-genera EMP001, EMP002, etc.
+        response = await fetch("http://localhost:8000/api/clientes/empresa/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(newClient),
+        })
+      } else {
+        // Crear persona física - requiere cédula manual
+        response = await fetch(`http://localhost:8000/api/clientes/persona/${personaIdNacional}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(newClient),
+        })
+      }
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -335,38 +354,40 @@ export function ClientsSection() {
       await loadClients(1, true)
 
       setNewClient({
-        id_nacional: "",
-        name: "",
-        lastname: "",
-        email: "",
-        phone: "",
+        nombre: "",
+        apellido: "",
+        correo: "",
+        telefono: "",
+        tipo_cliente: "PERSONA"
       })
+      setPersonaIdNacional("")
       setValidationError("")
       setIsNewClientModalOpen(false)
     } catch (error: any) {
       console.error("Error al registrar cliente:", error)
-      alert(error.message || "Error inesperado")
+      setValidationError(error.message || "Error inesperado")
     } finally {
       setIsLoading(false)
     }
-  }, [newClient])
+  }, [newClient, personaIdNacional])
 
   const handleEditClient = useCallback(async () => {
-    if (selectedClient && editClient.id_nacional && editClient.name && editClient.email && editClient.phone) {
+    if (selectedClient && editClient.nombre && editClient.correo) {
       setIsLoading(true)
 
       try {
-        const response = await fetch(`http://localhost:8000/api/clientes/${selectedClient.id}`, {
+        const response = await fetch(`http://localhost:8000/api/clientes/${selectedClient.id_nacional}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            id_nacional: editClient.id_nacional,
-            nombre: editClient.name,
-            apellido: editClient.lastname,
-            correo: editClient.email,
-            telefono: editClient.phone,
+            id_nacional: selectedClient.id_nacional, // No cambiar el ID
+            nombre: editClient.nombre,
+            apellido: editClient.apellido,
+            correo: editClient.correo,
+            telefono: editClient.telefono,
+            tipo_cliente: editClient.tipo_cliente,
           }),
         })
 
@@ -379,11 +400,11 @@ export function ClientsSection() {
         await loadClients(1, true)
 
         setEditClient({
-          id_nacional: "",
-          name: "",
-          lastname: "",
-          email: "",
-          phone: "",
+          nombre: "",
+          apellido: "",
+          correo: "",
+          telefono: "",
+          tipo_cliente: "PERSONA"
         })
         setSelectedClient(null)
         setIsEditClientModalOpen(false)
@@ -401,7 +422,7 @@ export function ClientsSection() {
       setIsLoading(true)
 
       try {
-        const response = await fetch(`http://localhost:8000/api/clientes/${clientToDelete.id}`, {
+        const response = await fetch(`http://localhost:8000/api/clientes/${clientToDelete.id_nacional}`, {
           method: "DELETE",
         })
 
@@ -432,11 +453,11 @@ export function ClientsSection() {
   const handleEditClientClick = useCallback((client: Client) => {
     setSelectedClient(client)
     setEditClient({
-      id_nacional: client.id,
-      name: client.name,
-      lastname: client.lastname || "",
-      email: client.email,
-      phone: client.phone,
+      nombre: client.nombre,
+      apellido: client.apellido || "",
+      correo: client.correo,
+      telefono: client.telefono || "",
+      tipo_cliente: client.tipo_cliente,
     })
     setIsEditClientModalOpen(true)
   }, [])
@@ -491,67 +512,104 @@ export function ClientsSection() {
             <DialogHeader>
               <DialogTitle>Registrar Nuevo Cliente</DialogTitle>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
+            <div className="grid gap-6 py-4">
+              {/* Tipo de Cliente */}
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="id_nacional" className="text-right">
-                  ID Nacional *
+                <Label htmlFor="tipo_cliente" className="text-right">
+                  Tipo *
+                </Label>
+                <Select 
+                  value={newClient.tipo_cliente} 
+                  onValueChange={(value: "PERSONA" | "EMPRESA") => 
+                    setNewClient({ ...newClient, tipo_cliente: value })
+                  }
+                >
+                  <SelectTrigger id="tipo_cliente" className="col-span-3">
+                    <SelectValue placeholder="Seleccionar tipo" />
+                  </SelectTrigger>
+                  <SelectContent className="z-50">
+                    <SelectItem value="PERSONA">Persona Física</SelectItem>
+                    <SelectItem value="EMPRESA">Empresa</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Cédula - Solo para Personas Físicas */}
+              {newClient.tipo_cliente === "PERSONA" && (
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="cedula_persona" className="text-right">
+                    Cédula *
+                  </Label>
+                  <div className="col-span-3 relative">
+                    <Input
+                      id="cedula_persona"
+                      value={personaIdNacional}
+                      onChange={(e) => setPersonaIdNacional(e.target.value)}
+                      placeholder="123456789"
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Nombre */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="nombre" className="text-right">
+                  {newClient.tipo_cliente === "EMPRESA" ? "Empresa *" : "Nombre *"}
                 </Label>
                 <Input
-                  id="id_nacional"
-                  value={newClient.id_nacional}
-                  onChange={(e) => setNewClient({ ...newClient, id_nacional: e.target.value })}
+                  id="nombre"
+                  value={newClient.nombre}
+                  onChange={(e) => setNewClient({ ...newClient, nombre: e.target.value })}
                   className="col-span-3"
-                  placeholder="Cedula de identidad"
+                  placeholder={newClient.tipo_cliente === "EMPRESA" ? "Nombre de la empresa" : "Nombre del cliente"}
                 />
               </div>
+
+              {/* Apellido - Solo para Personas Físicas */}
+              {newClient.tipo_cliente === "PERSONA" && (
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="apellido" className="text-right">
+                    Apellido *
+                  </Label>
+                  <Input
+                    id="apellido"
+                    value={newClient.apellido || ""}
+                    onChange={(e) => setNewClient({ ...newClient, apellido: e.target.value })}
+                    className="col-span-3"
+                    placeholder="Apellido del cliente"
+                  />
+                </div>
+              )}
+
+              {/* Correo */}
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">
-                  Nombre
+                <Label htmlFor="correo" className="text-right">
+                  Correo *
                 </Label>
                 <Input
-                  id="name"
-                  value={newClient.name}
-                  onChange={(e) => setNewClient({ ...newClient, name: e.target.value })}
-                  className="col-span-3"
-                  placeholder="Nombre del cliente"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="lastname" className="text-right">
-                  Apellido
-                </Label>
-                <Input
-                  id="lastname"
-                  value={newClient.lastname || ""}
-                  onChange={(e) => setNewClient({ ...newClient, lastname: e.target.value })}
-                  className="col-span-3"
-                  placeholder="Apellido del cliente"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="email" className="text-right">
-                  Email
-                </Label>
-                <Input
-                  id="email"
+                  id="correo"
                   type="email"
-                  value={newClient.email}
-                  onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
+                  value={newClient.correo}
+                  onChange={(e) => setNewClient({ ...newClient, correo: e.target.value })}
                   className="col-span-3"
-                  placeholder="email"
+                  placeholder="correo@ejemplo.com"
                 />
               </div>
+
+              {/* Teléfono - Obligatorio para Personas, Opcional para Empresas */}
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="phone" className="text-right">
-                  Teléfono
+                <Label htmlFor="telefono" className="text-right">
+                  Teléfono {newClient.tipo_cliente === "PERSONA" ? "*" : ""}
                 </Label>
                 <div className="col-span-3 relative">
                   <Input
-                    id="phone"
-                    value={newClient.phone ? newClient.phone.replace("+506", "").replace(/\D/g, "").replace(/(\d{4})(\d{4})/, "$1-$2") : ""}
+                    id="telefono"
+                    value={newClient.telefono ? newClient.telefono.replace("+506", "").replace(/\D/g, "").replace(/(\d{4})(\d{4})/, "$1-$2") : ""}
                     onChange={(e) => handlePhoneInput(e.target.value, setNewClient, newClient)}
                     className="pl-12"
-                    maxLength={9} // 8746-7602
+                    maxLength={9}
+                    placeholder={newClient.tipo_cliente === "EMPRESA" ? "Opcional" : ""}
                   />
                   <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm font-medium">
                     +506
@@ -666,19 +724,24 @@ export function ClientsSection() {
               </TableHeader>
               <TableBody>
                 {displayClients.map((client) => (
-                  <TableRow key={client.id} className="hover:bg-gray-50">
+                  <TableRow key={client.id_nacional} className="hover:bg-gray-50">
                     <TableCell className="font-medium">
-                      {client.name}{client.lastname ? ` ${client.lastname}` : ''}
+                      <div className="flex flex-col">
+                        <span>{client.nombre}{client.apellido ? ` ${client.apellido}` : ''}</span>
+                        <span className="text-xs text-gray-500">
+                          {client.tipo_cliente === "EMPRESA" ? "🏢 Empresa" : "👤 Persona"} - {client.id_nacional}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 text-sm">
                           <Mail className="h-3 w-3" />
-                          {client.email || "Sin email"}
+                          {client.correo || "Sin email"}
                         </div>
                         <div className="flex items-center gap-2 text-sm">
                           <Phone className="h-3 w-3" />
-                          {formatPhoneForDisplay(client.phone)}
+                          {formatPhoneForDisplay(client.telefono || "")}
                         </div>
                       </div>
                     </TableCell>
@@ -686,7 +749,7 @@ export function ClientsSection() {
                       <Badge variant="outline">{client.vehicle_count || 0}</Badge>
                       {/* Debug: {console.log(`Rendering vehicle count for ${client.name}:`, client.vehicle_count)} */}
                     </TableCell>
-                    <TableCell className="font-medium">{formatCurrency(client.total_spent)}</TableCell>
+                    <TableCell className="font-medium">{formatCurrency(client.total_gastado)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button
@@ -765,7 +828,7 @@ export function ClientsSection() {
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <div className="flex items-center gap-2">
                   <Label className="text-sm font-medium text-blue-700">ID del Cliente:</Label>
-                  <p className="text-sm font-mono font-medium text-blue-800">#{selectedClient.id}</p>
+                  <p className="text-sm font-mono font-medium text-blue-800">#{selectedClient.id_nacional}</p>
                 </div>
               </div>
 
@@ -774,22 +837,22 @@ export function ClientsSection() {
                   <div>
                     <Label className="text-sm font-medium text-gray-500">Nombre</Label>
                     <p className="text-lg font-medium">
-                      {selectedClient.name}{selectedClient.lastname ? ` ${selectedClient.lastname}` : ''}
+                      {selectedClient.nombre}{selectedClient.apellido ? ` ${selectedClient.apellido}` : ''}
                     </p>
                   </div>
                   <div>
                     <Label className="text-sm font-medium text-gray-500">Total Gastado</Label>
-                    <p className="text-lg font-medium text-green-600">{formatCurrency(selectedClient.total_spent)}</p>
+                    <p className="text-lg font-medium text-green-600">{formatCurrency(selectedClient.total_gastado)}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-sm font-medium text-gray-500">Email</Label>
-                    <p className="text-base">{selectedClient.email}</p>
+                    <p className="text-base">{selectedClient.correo}</p>
                   </div>
                   <div>
                     <Label className="text-sm font-medium text-gray-500">Teléfono</Label>
-                    <p className="text-base">{formatPhoneForDisplay(selectedClient.phone)}</p>
+                    <p className="text-base">{formatPhoneForDisplay(selectedClient.telefono || "")}</p>
                   </div>
                 </div>
               </div>
@@ -798,11 +861,11 @@ export function ClientsSection() {
                 <div className="flex items-center gap-2 mb-4">
                   <Car className="h-5 w-5" />
                   <Label className="text-lg font-medium">Vehículos Asociados</Label>
-                  <Badge variant="outline">{clientVehicles[selectedClient.id]?.length || 0}</Badge>
+                  <Badge variant="outline">{clientVehicles[selectedClient.id_nacional]?.length || 0}</Badge>
                 </div>
-                {clientVehicles[selectedClient.id] && clientVehicles[selectedClient.id].length > 0 ? (
+                {clientVehicles[selectedClient.id_nacional] && clientVehicles[selectedClient.id_nacional].length > 0 ? (
                   <div className="space-y-2">
-                    {clientVehicles[selectedClient.id].map((vehicle: Vehicle) => (
+                    {clientVehicles[selectedClient.id_nacional].map((vehicle: Vehicle) => (
                       <div
                         key={vehicle.id}
                         className="flex items-center justify-between p-3 border rounded-lg bg-gray-50"
@@ -843,66 +906,91 @@ export function ClientsSection() {
             <DialogTitle>Editar Cliente</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            {/* ID Nacional - Solo lectura */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-id_nacional" className="text-right">
-                ID Nacional *
+                ID Nacional
               </Label>
               <Input
                 id="edit-id_nacional"
-                value={editClient.id_nacional}
-                onChange={(e) => setEditClient({ ...editClient, id_nacional: e.target.value })}
+                value={selectedClient?.id_nacional || ""}
                 className="col-span-3"
+                disabled
                 placeholder="123456789"
               />
             </div>
+
+            {/* Tipo de Cliente - Solo lectura */}
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-name" className="text-right">
-                Nombre
+              <Label htmlFor="edit-tipo" className="text-right">
+                Tipo
               </Label>
               <Input
-                id="edit-name"
-                value={editClient.name}
-                onChange={(e) => setEditClient({ ...editClient, name: e.target.value })}
+                id="edit-tipo"
+                value={editClient.tipo_cliente === "EMPRESA" ? "🏢 Empresa" : "👤 Persona"}
                 className="col-span-3"
-                placeholder="Juan Pérez"
+                disabled
               />
             </div>
+
+            {/* Nombre */}
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-lastname" className="text-right">
-                Apellido
+              <Label htmlFor="edit-nombre" className="text-right">
+                {editClient.tipo_cliente === "EMPRESA" ? "Empresa" : "Nombre"} *
               </Label>
               <Input
-                id="edit-lastname"
-                value={editClient.lastname || ""}
-                onChange={(e) => setEditClient({ ...editClient, lastname: e.target.value })}
+                id="edit-nombre"
+                value={editClient.nombre}
+                onChange={(e) => setEditClient({ ...editClient, nombre: e.target.value })}
                 className="col-span-3"
-                placeholder="Apellido del cliente"
+                placeholder={editClient.tipo_cliente === "EMPRESA" ? "Nombre de la empresa" : "Nombre del cliente"}
               />
             </div>
+
+            {/* Apellido - Solo para Personas */}
+            {editClient.tipo_cliente === "PERSONA" && (
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-apellido" className="text-right">
+                  Apellido *
+                </Label>
+                <Input
+                  id="edit-apellido"
+                  value={editClient.apellido || ""}
+                  onChange={(e) => setEditClient({ ...editClient, apellido: e.target.value })}
+                  className="col-span-3"
+                  placeholder="Apellido del cliente"
+                />
+              </div>
+            )}
+
+            {/* Correo */}
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-email" className="text-right">
-                Email
+              <Label htmlFor="edit-correo" className="text-right">
+                Correo *
               </Label>
               <Input
-                id="edit-email"
+                id="edit-correo"
                 type="email"
-                value={editClient.email}
-                onChange={(e) => setEditClient({ ...editClient, email: e.target.value })}
+                value={editClient.correo}
+                onChange={(e) => setEditClient({ ...editClient, correo: e.target.value })}
                 className="col-span-3"
-                placeholder="juan@email.com"
+                placeholder="correo@ejemplo.com"
               />
             </div>
+
+            {/* Teléfono */}
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-phone" className="text-right">
-                Teléfono
+              <Label htmlFor="edit-telefono" className="text-right">
+                Teléfono {editClient.tipo_cliente === "PERSONA" ? "*" : ""}
               </Label>
               <div className="col-span-3 relative">
                 <Input
-                  id="edit-phone"
-                  value={editClient.phone ? editClient.phone.replace("+506", "").replace(/\D/g, "").replace(/(\d{4})(\d{4})/, "$1-$2") : ""}
+                  id="edit-telefono"
+                  value={editClient.telefono ? editClient.telefono.replace("+506", "").replace(/\D/g, "").replace(/(\d{4})(\d{4})/, "$1-$2") : ""}
                   onChange={(e) => handlePhoneInput(e.target.value, setEditClient, editClient)}
                   className="pl-12"
-                  maxLength={9} // 8746-7602
+                  maxLength={9}
+                  placeholder={editClient.tipo_cliente === "EMPRESA" ? "Opcional" : ""}
                 />
                 <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm font-medium">
                   +506
@@ -938,22 +1026,22 @@ export function ClientsSection() {
                 </p>
                 <div className="space-y-2 text-sm">
                   <div>
-                    <span className="font-medium">ID Nacional:</span> {clientToDelete.id}
+                    <span className="font-medium">ID Nacional:</span> {clientToDelete.id_nacional}
                   </div>
                   <div>
-                    <span className="font-medium">Cliente:</span> {clientToDelete.name}{clientToDelete.lastname ? ` ${clientToDelete.lastname}` : ''}
+                    <span className="font-medium">Cliente:</span> {clientToDelete.nombre}{clientToDelete.apellido ? ` ${clientToDelete.apellido}` : ''}
                   </div>
                   <div>
-                    <span className="font-medium">Email:</span> {clientToDelete.email}
+                    <span className="font-medium">Email:</span> {clientToDelete.correo}
                   </div>
                   <div>
-                    <span className="font-medium">Teléfono:</span> {formatPhoneForDisplay(clientToDelete.phone)}
+                    <span className="font-medium">Teléfono:</span> {formatPhoneForDisplay(clientToDelete.telefono || "")}
                   </div>
                   <div>
                     <span className="font-medium">Vehículos:</span> {clientToDelete.vehicle_count}
                   </div>
                   <div>
-                    <span className="font-medium">Total gastado:</span> {formatCurrency(clientToDelete.total_spent)}
+                    <span className="font-medium">Total gastado:</span> {formatCurrency(clientToDelete.total_gastado)}
                   </div>
                 </div>
               </div>
