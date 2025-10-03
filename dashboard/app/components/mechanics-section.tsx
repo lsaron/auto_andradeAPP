@@ -48,9 +48,55 @@ export function MechanicsSection() {
     preserveHistory: true
   })
 
+  // Estados para control de período mensual
+  const [isCurrentPeriod, setIsCurrentPeriod] = useState(true)
+  const [lastResetCheck, setLastResetCheck] = useState<Date>(new Date())
+
+  // Función para detectar si es el fin del mes (domingo de la cuarta semana)
+  const esFinDeMes = useCallback(() => {
+    const fecha = new Date()
+    const dia = fecha.getDate()
+    const diaSemana = fecha.getDay() // 0 = domingo, 1 = lunes, etc.
+    
+    // Calcular el último domingo del mes
+    const ultimoDia = new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0)
+    const ultimoDomingo = new Date(ultimoDia)
+    
+    // Retroceder hasta encontrar el domingo anterior
+    while (ultimoDomingo.getDay() !== 0) {
+      ultimoDomingo.setDate(ultimoDomingo.getDate() - 1)
+    }
+    
+    // Verificar si hoy es el domingo de la cuarta semana o el último domingo del mes
+    const esDomingo = diaSemana === 0
+    const esCuartaSemana = Math.ceil(dia / 7) === 4
+    const esUltimoDomingo = fecha.getDate() === ultimoDomingo.getDate()
+    
+    // También considerar si estamos en los últimos días del mes (últimos 3 días)
+    const esUltimosDias = dia >= ultimoDia.getDate() - 2
+    
+    const resultado = esDomingo && (esCuartaSemana || esUltimoDomingo || esUltimosDias)
+    console.log("📅 esFinDeMes (mechanics-section):", {
+      fecha: fecha.toISOString(),
+      dia,
+      diaSemana,
+      esDomingo,
+      esCuartaSemana,
+      esUltimoDomingo,
+      esUltimosDias,
+      resultado
+    })
+    
+    return resultado
+  }, [])
+
   const [mechanics, setMechanics] = useState<Mechanic[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [periodStats, setPeriodStats] = useState<{
+    totalUniqueJobs: number
+    totalCommissions: number
+  }>({ totalUniqueJobs: 0, totalCommissions: 0 })
   const [searchTerm, setSearchTerm] = useState("")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
@@ -91,7 +137,6 @@ export function MechanicsSection() {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear())
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth())
   const [availableYears, setAvailableYears] = useState<number[]>([])
-  const [isCurrentPeriod, setIsCurrentPeriod] = useState(true)
   const [availableMonths] = useState([
     { value: 0, label: "Enero" },
     { value: 1, label: "Febrero" },
@@ -117,23 +162,140 @@ export function MechanicsSection() {
     setAvailableYears(anos)
   }, [])
 
-  // Función para verificar si es período actual
+  // Función para cargar datos (similar a taller-section.tsx)
+  const cargarDatos = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      console.log("🔄 Cargando datos de mecánicos para el período:", { selectedYear, selectedMonth })
+      
+      // Cargar todos los mecánicos
+      const data = await mecanicosApi.getAll()
+      console.log("🔄 Datos de mecánicos obtenidos:", data)
+      
+      // Para cada mecánico, obtener sus trabajos del período seleccionado
+      const mecanicosConStats = await Promise.all(
+        data.map(async (mecanico: any) => {
+          try {
+            console.log(`🔄 Obteniendo trabajos del período ${selectedYear}-${selectedMonth + 1} para mecánico ${mecanico.id}...`)
+            
+            // Obtener trabajos del mecánico desde la API
+            const url = `http://localhost:8000/api/mecanicos/${mecanico.id}/trabajos`
+            const response = await fetch(url)
+            
+            if (!response.ok) {
+              console.error(`❌ Error al obtener trabajos para mecánico ${mecanico.id}:`, response.status)
+              return null
+            }
+            
+            const jobsData = await response.json()
+            console.log(`🔍 Trabajos obtenidos para mecánico ${mecanico.id}:`, jobsData.length)
+            
+            // Filtrar trabajos por el período seleccionado
+            const trabajosFiltrados = jobsData.filter((job: any) => {
+              try {
+                const jobDate = new Date(job.fecha)
+                const jobYear = jobDate.getFullYear()
+                const jobMonth = jobDate.getMonth() // 0-11
+                
+                const matches = jobYear === selectedYear && jobMonth === selectedMonth
+                console.log(`🔍 Trabajo ${job.matricula_carro} - Año: ${jobYear}, Mes: ${jobMonth}, Filtros: ${selectedYear}/${selectedMonth}, Coincide: ${matches}`)
+                return matches
+              } catch (error) {
+                console.error("Error al procesar fecha del trabajo:", error)
+                return false
+              }
+            })
+            
+            console.log(`🔍 Trabajos filtrados para mecánico ${mecanico.id}: ${trabajosFiltrados.length} de ${jobsData.length}`)
+            
+            // Solo incluir mecánicos que tengan trabajos en el período seleccionado
+            if (trabajosFiltrados.length > 0) {
+              // Calcular estadísticas del período
+              const totalTrabajos = trabajosFiltrados.length
+              const totalComisiones = trabajosFiltrados.reduce((sum: number, job: any) => sum + (Number(job.comision) || 0), 0)
+              const totalGanancias = trabajosFiltrados.reduce((sum: number, job: any) => sum + (Number(job.ganancia_base) || 0), 0)
+              
+              const mecanicoMapeado = {
+                id: mecanico.id.toString(),
+                name: mecanico.nombre || '',
+                mechanic_id: `MC-${mecanico.id}`,
+                jobs_completed: totalTrabajos,
+                total_commission: totalComisiones,
+                total_profit: totalGanancias,
+                hire_date: mecanico.fecha_contratacion || new Date().toISOString(),
+                created_at: mecanico.created_at || new Date().toISOString(),
+                updated_at: mecanico.updated_at || new Date().toISOString()
+              }
+              
+              console.log(`✅ Mecánico ${mecanico.id} incluido con datos del período:`, mecanicoMapeado)
+              return mecanicoMapeado
+            } else {
+              console.log(`❌ Mecánico ${mecanico.id} excluido - sin trabajos en el período`)
+              return null
+            }
+          } catch (err) {
+            console.error(`❌ Error al obtener trabajos para mecánico ${mecanico.id}:`, err)
+            return null
+          }
+        })
+      )
+      
+      // Filtrar los mecánicos que tienen datos (eliminar nulls)
+      const mecanicosFiltrados = mecanicosConStats.filter(mecanico => mecanico !== null)
+      
+      // Calcular estadísticas del período (trabajos únicos y comisiones totales)
+      const totalUniqueJobs = mecanicosFiltrados.length > 0 ? mecanicosFiltrados[0].jobs_completed : 0
+      const totalCommissions = mecanicosFiltrados.reduce((sum, mecanico) => sum + mecanico.total_commission, 0)
+      
+      console.log(`🔄 Mecánicos con datos en el período ${selectedYear}-${selectedMonth + 1}:`, mecanicosFiltrados.length)
+      console.log(`📊 Estadísticas del período: ${totalUniqueJobs} trabajos únicos, ₡${totalCommissions} en comisiones`)
+      
+      setMechanics(mecanicosFiltrados)
+      setPeriodStats({ totalUniqueJobs, totalCommissions })
+      setLastUpdated(new Date())
+    } catch (err) {
+      console.error("❌ Error al cargar datos:", err)
+      setError("Error al cargar los datos.")
+    } finally {
+      setLoading(false)
+    }
+  }, [selectedYear, selectedMonth])
+
+  // Función wrapper para compatibilidad
+  const reloadMechanics = useCallback(async () => {
+    await cargarDatos()
+  }, [cargarDatos])
+
+  // Función para verificar si es período actual (similar a taller-section.tsx)
   const verificarPeriodoActual = useCallback(() => {
     const fechaActual = new Date()
     const anoActual = fechaActual.getFullYear()
-    const mesActual = fechaActual.getMonth()
+    const mesActual = fechaActual.getMonth() // 0-11 para JavaScript
     
     const esPeriodoActual = selectedYear === anoActual && selectedMonth === mesActual
-    setIsCurrentPeriod(esPeriodoActual)
-    
-    console.log("📅 Verificando período actual:", {
+    console.log("📅 verificarPeriodoActual:", {
       selectedYear,
       selectedMonth,
       anoActual,
       mesActual,
       esPeriodoActual
     })
-  }, [selectedYear, selectedMonth])
+    
+    setIsCurrentPeriod(esPeriodoActual)
+    
+    // Si es fin de mes y estamos en período actual, reiniciar datos
+    if (esFinDeMes() && esPeriodoActual) {
+      console.log("🔄 FIN DE MES DETECTADO - Reiniciando datos...")
+      // Reiniciar a datos del mes actual
+      setSelectedYear(anoActual)
+      setSelectedMonth(mesActual)
+      // Limpiar la lista localmente (sin afectar la base de datos)
+      setMechanics([])
+      // Recargar datos del nuevo mes
+      cargarDatos()
+    }
+  }, [selectedYear, selectedMonth, esFinDeMes, cargarDatos])
 
   // Función para resetear al período actual
   const resetearAPeriodoActual = useCallback(() => {
@@ -143,153 +305,10 @@ export function MechanicsSection() {
     setIsCurrentPeriod(true)
   }, [])
 
-  // Cargar mecánicos desde la API
-  useEffect(() => {
-    obtenerAnosDisponibles()
-  }, [obtenerAnosDisponibles])
-
-  useEffect(() => {
-    verificarPeriodoActual()
-  }, [verificarPeriodoActual])
-
-  // Manejar reset mensual automático
-  useEffect(() => {
-    const handleMonthlyReset = () => {
-      console.log("🔄 Reset mensual automático ejecutado en mechanics-section")
-      resetearAPeriodoActual()
-      // Recargar datos para mostrar solo el período actual
-      reloadMechanics()
-    }
-
-    window.addEventListener('monthlyReset', handleMonthlyReset)
-    return () => window.removeEventListener('monthlyReset', handleMonthlyReset)
-  }, [resetearAPeriodoActual])
-
-  useEffect(() => {
-    const fetchMechanics = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        console.log("🔍 Cargando mecánicos desde la API...")
-        const data = await mecanicosApi.getAll()
-        console.log("🔍 Datos de mecánicos obtenidos:", data)
-        
-        // Para cada mecánico, obtener sus estadísticas y mapear a la interfaz Mechanic
-        const mecanicosConStats = await Promise.all(
-          data.map(async (mecanico: any) => {
-            try {
-              console.log(`🔍 Obteniendo estadísticas para mecánico ${mecanico.id}...`)
-              const stats: any = await mecanicosApi.getStats(parseInt(mecanico.id))
-              console.log(`🔍 Estadísticas para mecánico ${mecanico.id}:`, stats)
-              console.log(`🔍 Tipo de stats:`, typeof stats, stats === null, stats === undefined)
-              
-              const mecanicoMapeado = {
-                id: mecanico.id.toString(),
-                name: mecanico.nombre || '',
-                mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
-                jobs_completed: stats?.total_trabajos || 0,
-                total_commission: parseFloat(stats?.comisiones_mes?.toString() || '0'),
-                total_profit: parseFloat(stats?.total_ganancias?.toString() || '0'),
-                hire_date: mecanico.fecha_contratacion || new Date().toISOString(),
-                created_at: mecanico.created_at || new Date().toISOString(),
-                updated_at: mecanico.updated_at || new Date().toISOString()
-              }
-              
-              console.log(`🔍 Mecánico ${mecanico.id} mapeado:`, mecanicoMapeado)
-              return mecanicoMapeado
-            } catch (err) {
-              console.error(`❌ Error al obtener estadísticas para mecánico ${mecanico.id}:`, err)
-              // Si no se pueden obtener estadísticas, usar valores por defecto
-              return {
-                id: mecanico.id.toString(),
-                name: mecanico.nombre || '',
-                mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
-                jobs_completed: 0,
-                total_commission: 0,
-                total_profit: 0,
-                hire_date: mecanico.fecha_contratacion || new Date().toISOString(),
-                created_at: mecanico.created_at || new Date().toISOString(),
-                updated_at: mecanico.updated_at || new Date().toISOString()
-              }
-            }
-          })
-        )
-        
-        console.log("🔍 Todos los mecánicos con estadísticas:", mecanicosConStats)
-        setMechanics(mecanicosConStats)
-        setLastUpdated(new Date())
-      } catch (err) {
-        console.error("❌ Error al cargar mecánicos:", err)
-        setError("Error al cargar los mecánicos.")
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchMechanics()
-  }, [])
-
-  // Función para recargar mecánicos
-  const reloadMechanics = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      console.log("🔄 Recargando mecánicos...")
-      const data = await mecanicosApi.getAll()
-      console.log("🔄 Datos de mecánicos obtenidos:", data)
-      
-      // Para cada mecánico, obtener sus estadísticas y mapear a la interfaz Mechanic
-      const mecanicosConStats = await Promise.all(
-        data.map(async (mecanico: any) => {
-          try {
-            console.log(`🔄 Obteniendo estadísticas para mecánico ${mecanico.id}...`)
-            const stats: any = await mecanicosApi.getStats(parseInt(mecanico.id))
-            console.log(`🔄 Estadísticas para mecánico ${mecanico.id}:`, stats)
-            
-            const mecanicoMapeado = {
-              id: mecanico.id.toString(),
-              name: mecanico.nombre || '',
-              mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
-              jobs_completed: stats?.total_trabajos || 0,
-              total_commission: parseFloat(stats?.comisiones_mes?.toString() || '0'),
-              total_profit: parseFloat(stats?.total_ganancias?.toString() || '0'),
-              hire_date: mecanico.fecha_contratacion || new Date().toISOString(),
-              created_at: mecanico.created_at || new Date().toISOString(),
-              updated_at: mecanico.updated_at || new Date().toISOString()
-            }
-            
-            console.log(`🔄 Mecánico ${mecanico.id} mapeado:`, mecanicoMapeado)
-            return mecanicoMapeado
-          } catch (err) {
-            console.error(`❌ Error al obtener estadísticas para mecánico ${mecanico.id}:`, err)
-            // Si no se pueden obtener estadísticas, usar valores por defecto
-            return {
-              id: mecanico.id.toString(),
-              name: mecanico.nombre || '',
-              mechanic_id: `MC-${mecanico.id}`, // Formato MC-1, MC-2, etc.
-              jobs_completed: 0,
-              total_commission: 0,
-              total_profit: 0,
-              hire_date: mecanico.fecha_contratacion || new Date().toISOString(),
-              created_at: mecanico.created_at || new Date().toISOString(),
-              updated_at: mecanico.updated_at || new Date().toISOString()
-            }
-          }
-        })
-      )
-      
-      console.log("🔄 Todos los mecánicos con estadísticas:", mecanicosConStats)
-      setMechanics(mecanicosConStats)
-      setLastUpdated(new Date())
-    } catch (err) {
-      console.error("❌ Error al recargar mecánicos:", err)
-      setError("Error al recargar los mecánicos.")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-
+  // Función wrapper para botones
+  const handleReloadMechanics = useCallback(() => {
+    reloadMechanics()
+  }, [reloadMechanics])
 
   // Filter mechanics based on search term
   const filteredMechanics = useMemo(() => {
@@ -305,13 +324,14 @@ export function MechanicsSection() {
   // Statistics
   const stats = useMemo(() => {
     const totalMechanics = mechanics.length
-    const totalJobs = mechanics.reduce((sum, mechanic) => sum + mechanic.jobs_completed, 0)
-    const totalCommissions = mechanics.reduce((sum, mechanic) => sum + mechanic.total_commission, 0)
+    const totalJobs = periodStats.totalUniqueJobs
+    const totalCommissions = periodStats.totalCommissions
 
     console.log("📊 Calculando estadísticas:", {
       totalMechanics,
       totalJobs,
       totalCommissions,
+      periodStats,
       mechanics: mechanics.map(m => ({
         id: m.id,
         name: m.name,
@@ -325,7 +345,7 @@ export function MechanicsSection() {
       totalJobs,
       totalCommissions,
     }
-  }, [mechanics])
+  }, [mechanics, periodStats])
 
   const handleCreateMechanic = useCallback(async () => {
     if (!newMechanic.nombre.trim() || !newMechanic.id_nacional?.trim()) return
@@ -519,41 +539,16 @@ export function MechanicsSection() {
       availableYears
     })
     
-    // Si no hay filtros seleccionados, mostrar todos los trabajos
-    if (selectedYear === new Date().getFullYear() && selectedMonth === new Date().getMonth()) {
-      console.log(`🔍 Período actual: mostrando todos los ${mechanicJobs.length} trabajos`)
-      return mechanicJobs
-    }
-    
+    // SIEMPRE filtrar por el período seleccionado (año y mes)
     const filtered = mechanicJobs.filter((job) => {
       try {
         const jobDate = new Date(job.fecha as string)
         const jobYear = jobDate.getFullYear()
-        const jobMonth = jobDate.getMonth()
+        const jobMonth = jobDate.getMonth() // 0-11
         
-        // Si solo hay año seleccionado, filtrar por año
-        if (selectedYear !== new Date().getFullYear() && selectedMonth === new Date().getMonth()) {
-          const matches = jobYear === selectedYear
-          console.log(`🔍 Trabajo ${job.matricula_carro} - Año: ${jobYear}, Filtro: ${selectedYear}, Coincide: ${matches}`)
-          return matches
-        }
-        
-        // Si solo hay mes seleccionado, filtrar por mes del año actual
-        if (selectedYear === new Date().getFullYear() && selectedMonth !== new Date().getMonth()) {
-          const currentYear = new Date().getFullYear()
-          const matches = jobYear === currentYear && jobMonth === selectedMonth
-          console.log(`🔍 Trabajo ${job.matricula_carro} - Año: ${jobYear}, Mes: ${jobMonth}, Filtro: ${selectedMonth}, Coincide: ${matches}`)
-          return matches
-        }
-        
-        // Si hay ambos, filtrar por año y mes
-        if (selectedYear && selectedMonth) {
-          const matches = jobYear === selectedYear && jobMonth === selectedMonth
-          console.log(`🔍 Trabajo ${job.matricula_carro} - Año: ${jobYear}, Mes: ${jobMonth}, Filtros: ${selectedYear}/${selectedMonth}, Coincide: ${matches}`)
-          return matches
-        }
-        
-        return true
+        const matches = jobYear === selectedYear && jobMonth === selectedMonth
+        console.log(`🔍 Trabajo ${job.matricula_carro} - Año: ${jobYear}, Mes: ${jobMonth}, Filtros: ${selectedYear}/${selectedMonth}, Coincide: ${matches}`)
+        return matches
       } catch (error) {
         console.error("Error al procesar fecha del trabajo:", error)
         return false
@@ -562,9 +557,69 @@ export function MechanicsSection() {
     
     console.log(`🔍 Trabajos filtrados: ${filtered.length} de ${mechanicJobs.length}`)
     return filtered
-  }, [mechanicJobs, selectedYear, selectedMonth, availableYears])
+  }, [mechanicJobs, selectedYear, selectedMonth])
 
+  // ===== USE EFFECTS =====
+  
+  // Cargar mecánicos desde la API
+  useEffect(() => {
+    obtenerAnosDisponibles()
+  }, [obtenerAnosDisponibles])
 
+  // Verificar período actual cuando cambien las fechas seleccionadas
+  useEffect(() => {
+    console.log("📅 useEffect verificarPeriodoActual ejecutado:", {
+      selectedYear,
+      selectedMonth
+    })
+    verificarPeriodoActual()
+  }, [selectedYear, selectedMonth, verificarPeriodoActual])
+
+  // Verificar período actual al inicio
+  useEffect(() => {
+    console.log("🚀 useEffect inicial verificarPeriodoActual ejecutado")
+    verificarPeriodoActual()
+  }, [verificarPeriodoActual])
+
+  // Cargar datos cuando cambien los filtros de año/mes
+  useEffect(() => {
+    if (selectedYear && selectedMonth !== undefined) {
+      console.log("🔄 Filtros cambiados, cargando datos:", { selectedYear, selectedMonth })
+      cargarDatos()
+    }
+  }, [selectedYear, selectedMonth, cargarDatos])
+
+  // Verificar período actual cada hora (para detectar cambios automáticamente)
+  useEffect(() => {
+    // Verificar inmediatamente
+    verificarPeriodoActual()
+    
+    // Configurar verificación cada hora
+    const interval = setInterval(verificarPeriodoActual, 60 * 60 * 1000) // 1 hora
+    
+    return () => clearInterval(interval)
+  }, [verificarPeriodoActual])
+
+  // Manejar reset mensual automático
+  useEffect(() => {
+    const handleMonthlyReset = () => {
+      console.log("🔄 Reset mensual automático ejecutado en mechanics-section")
+      resetearAPeriodoActual()
+      // Recargar datos para mostrar solo el período actual
+      cargarDatos()
+    }
+
+    window.addEventListener('monthlyReset', handleMonthlyReset)
+    return () => window.removeEventListener('monthlyReset', handleMonthlyReset)
+  }, [resetearAPeriodoActual, cargarDatos])
+
+  // Cargar datos iniciales
+  useEffect(() => {
+    console.log("🚀 Cargando datos iniciales de mecánicos...")
+    cargarDatos()
+  }, [cargarDatos])
+
+  // ===== RENDER =====
 
   if (loading && mechanics.length === 0) {
     return (
@@ -578,8 +633,8 @@ export function MechanicsSection() {
   if (error && mechanics.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
-        <ErrorMessage error={new Error(error)} onRetry={reloadMechanics} />
-        <Button onClick={reloadMechanics} className="mt-4">
+        <ErrorMessage error={new Error(error)} onRetry={handleReloadMechanics} />
+        <Button onClick={handleReloadMechanics} className="mt-4">
           <RefreshCw className="h-4 w-4 mr-2" />
           Reintentar
         </Button>
@@ -613,7 +668,7 @@ export function MechanicsSection() {
               <div className="flex gap-3">
                 <Button 
                   variant="secondary" 
-                  onClick={reloadMechanics} 
+                  onClick={handleReloadMechanics} 
                   disabled={loading}
                   className="min-w-[140px] bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-300"
                 >

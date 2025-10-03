@@ -294,28 +294,16 @@ export function ClientsSection() {
     // Clear previous validation errors
     setValidationError("")
     
-    // Validate required fields
+    // Validación básica - solo nombre y cédula son obligatorios
     if (!newClient.nombre) {
       setValidationError("El nombre es obligatorio")
       return
     }
-    if (!newClient.correo) {
-      setValidationError("El correo es obligatorio")
-      return
-    }
     
-    // Para personas físicas, validar cédula y apellido
+    // Para personas físicas, validar cédula
     if (newClient.tipo_cliente === "PERSONA") {
       if (!personaIdNacional) {
         setValidationError("La cédula es obligatoria para personas físicas")
-        return
-      }
-      if (!newClient.apellido) {
-        setValidationError("El apellido es obligatorio para personas físicas")
-        return
-      }
-      if (!newClient.telefono) {
-        setValidationError("El teléfono es obligatorio para personas físicas")
         return
       }
     }
@@ -323,27 +311,24 @@ export function ClientsSection() {
     setIsLoading(true)
 
     try {
-      let response: Response
-      
-      if (newClient.tipo_cliente === "EMPRESA") {
-        // Crear empresa - auto-genera EMP001, EMP002, etc.
-        response = await fetch("http://localhost:8000/api/clientes/empresa/", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(newClient),
-        })
-      } else {
-        // Crear persona física - requiere cédula manual
-        response = await fetch(`http://localhost:8000/api/clientes/persona/${personaIdNacional}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(newClient),
-        })
+      // Preparar datos para enviar
+      const clienteData = {
+        id_nacional: newClient.tipo_cliente === "PERSONA" ? personaIdNacional : "TEMP", // Para empresas se auto-genera
+        nombre: newClient.nombre,
+        apellido: newClient.tipo_cliente === "PERSONA" ? newClient.apellido : null,
+        correo: newClient.correo || null,
+        telefono: newClient.telefono || null,
+        tipo_cliente: newClient.tipo_cliente
       }
+      
+      // Usar un solo endpoint
+      const response = await fetch("http://localhost:8000/api/clientes/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(clienteData),
+      })
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -372,7 +357,7 @@ export function ClientsSection() {
   }, [newClient, personaIdNacional])
 
   const handleEditClient = useCallback(async () => {
-    if (selectedClient && editClient.nombre && editClient.correo) {
+    if (selectedClient && editClient.nombre) {
       setIsLoading(true)
 
       try {
@@ -570,7 +555,7 @@ export function ClientsSection() {
               {newClient.tipo_cliente === "PERSONA" && (
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="apellido" className="text-right">
-                    Apellido *
+                    Apellido
                   </Label>
                   <Input
                     id="apellido"
@@ -585,7 +570,7 @@ export function ClientsSection() {
               {/* Correo */}
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="correo" className="text-right">
-                  Correo *
+                  Correo
                 </Label>
                 <Input
                   id="correo"
@@ -600,7 +585,7 @@ export function ClientsSection() {
               {/* Teléfono - Obligatorio para Personas, Opcional para Empresas */}
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="telefono" className="text-right">
-                  Teléfono {newClient.tipo_cliente === "PERSONA" ? "*" : ""}
+                  Teléfono
                 </Label>
                 <div className="col-span-3 relative">
                   <Input
@@ -951,7 +936,7 @@ export function ClientsSection() {
             {editClient.tipo_cliente === "PERSONA" && (
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="edit-apellido" className="text-right">
-                  Apellido *
+                  Apellido
                 </Label>
                 <Input
                   id="edit-apellido"
@@ -966,7 +951,7 @@ export function ClientsSection() {
             {/* Correo */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-correo" className="text-right">
-                Correo *
+                Correo
               </Label>
               <Input
                 id="edit-correo"
@@ -981,7 +966,7 @@ export function ClientsSection() {
             {/* Teléfono */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-telefono" className="text-right">
-                Teléfono {editClient.tipo_cliente === "PERSONA" ? "*" : ""}
+                Teléfono
               </Label>
               <div className="col-span-3 relative">
                 <Input

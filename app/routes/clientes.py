@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from decimal import Decimal
 from app.models.database import get_db
-from app.models.clientes import Cliente
+from app.models.clientes import Cliente, TipoCliente
 from app.models.carros import Carro
 from app.models.trabajos import Trabajo
 from app.models.historial_duenos import HistorialDueno
@@ -85,12 +85,34 @@ def obtener_cliente_con_carros(id_nacional: str, db: Session = Depends(get_db)):
 # Crear un cliente
 @router.post("/clientes/")
 def crear_cliente(cliente: ClienteSchema, db: Session = Depends(get_db)):
+    # Si es empresa, auto-generar ID
+    if cliente.tipo_cliente == TipoCliente.EMPRESA:
+        # Buscar el último número de empresa
+        ultima_empresa = db.query(Cliente).filter(
+            Cliente.id_nacional.like("EMP%")
+        ).order_by(Cliente.id_nacional.desc()).first()
+        
+        if ultima_empresa:
+            # Extraer número y incrementar
+            numero = int(ultima_empresa.id_nacional[3:]) + 1
+            id_nacional = f"EMP{numero:03d}"
+        else:
+            id_nacional = "EMP001"
+    else:
+        id_nacional = cliente.id_nacional
+    
+    # Verificar que no exista el id_nacional
+    cliente_existente = db.query(Cliente).filter(Cliente.id_nacional == id_nacional).first()
+    if cliente_existente:
+        raise HTTPException(status_code=400, detail="Ya existe un cliente con esta cédula")
+    
     nuevo_cliente = Cliente(
-        id_nacional=cliente.id_nacional,  # 👈 Aseguramos que se envíe el ID Nacional
+        id_nacional=id_nacional,
         nombre=cliente.nombre,
-        apellido=cliente.apellido,
+        apellido=cliente.apellido if cliente.tipo_cliente == TipoCliente.PERSONA else None,
         correo=cliente.correo,
-        telefono=cliente.telefono
+        telefono=cliente.telefono,
+        tipo_cliente=cliente.tipo_cliente
     )
     db.add(nuevo_cliente)
     db.commit()
